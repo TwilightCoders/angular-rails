@@ -9045,7 +9045,7 @@ jQuery.each([ "Height", "Width" ], function( i, name ) {
 window.jQuery = window.$ = jQuery;
 })(window);
 /**
- * @license AngularJS v0.10.4
+ * @license AngularJS v0.10.5
  * (c) 2010-2011 AngularJS http://angularjs.org
  * License: MIT
  */
@@ -9067,7 +9067,7 @@ if (typeof document.getAttribute == $undefined)
  * @param {string} string String to be converted to lowercase.
  * @returns {string} Lowercased string.
  */
-var lowercase = function(string){ return isString(string) ? string.toLowerCase() : string; };
+var lowercase = function(string){return isString(string) ? string.toLowerCase() : string;};
 
 
 /**
@@ -9079,17 +9079,17 @@ var lowercase = function(string){ return isString(string) ? string.toLowerCase()
  * @param {string} string String to be converted to uppercase.
  * @returns {string} Uppercased string.
  */
-var uppercase = function(string){ return isString(string) ? string.toUpperCase() : string; };
+var uppercase = function(string){return isString(string) ? string.toUpperCase() : string;};
 
 
 var manualLowercase = function(s) {
   return isString(s)
-      ? s.replace(/[A-Z]/g, function(ch) {return fromCharCode(ch.charCodeAt(0) | 32); })
+      ? s.replace(/[A-Z]/g, function(ch) {return fromCharCode(ch.charCodeAt(0) | 32);})
       : s;
 };
 var manualUppercase = function(s) {
   return isString(s)
-      ? s.replace(/[a-z]/g, function(ch) {return fromCharCode(ch.charCodeAt(0) & ~32); })
+      ? s.replace(/[a-z]/g, function(ch) {return fromCharCode(ch.charCodeAt(0) & ~32);})
       : s;
 };
 
@@ -9102,8 +9102,24 @@ if ('i' !== 'I'.toLowerCase()) {
   uppercase = manualUppercase;
 }
 
-function fromCharCode(code) { return String.fromCharCode(code); }
+function fromCharCode(code) {return String.fromCharCode(code);}
 
+/**
+ * Creates the element for IE8 and below to allow styling of widgets
+ * (http://ejohn.org/blog/html5-shiv/). This hack works only if angular is
+ * included synchronously at the top of the document before IE sees any
+ * unknown elements. See regression/issue-584.html.
+ *
+ * @param {string} elementName Name of the widget.
+ * @returns {string} Lowercased string.
+ */
+function shivForIE(elementName) {
+  elementName = lowercase(elementName);
+  if (msie < 9 && elementName.charAt(0) != '@') { // ignore attr-widgets
+    document.createElement(elementName);
+  }
+  return elementName;
+}
 
 var _undefined        = undefined,
     _null             = null,
@@ -9144,7 +9160,7 @@ var _undefined        = undefined,
     /** @name angular.directive */
     angularDirective  = extensionMap(angular, 'directive'),
     /** @name angular.widget */
-    angularWidget     = extensionMap(angular, 'widget', lowercase),
+    angularWidget     = extensionMap(angular, 'widget', shivForIE),
     /** @name angular.filter */
     angularFilter     = extensionMap(angular, 'filter'),
     /** @name angular.service */
@@ -9153,7 +9169,6 @@ var _undefined        = undefined,
     angularService    = extensionMap(angular, 'service'),
     angularCallbacks  = extensionMap(angular, 'callbacks'),
     nodeName_,
-    rngScript         = /^(|.*\/)angular(-.*?)?(\.min)?.js(\?[^#]*)?(#(.*))?$/,
     uid               = ['0', '0', '0'],
     DATE_ISOSTRING_LN = 24;
 
@@ -9332,7 +9347,7 @@ function noop() {}
 function identity($) {return $;}
 
 
-function valueFn(value) {return function() { return value; };}
+function valueFn(value) {return function() {return value;};}
 
 function extensionMap(angular, name, transform) {
   var extPoint;
@@ -9356,7 +9371,7 @@ function extensionMap(angular, name, transform) {
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is undefined.
  */
-function isUndefined(value){ return typeof value == $undefined; }
+function isUndefined(value){return typeof value == $undefined;}
 
 
 /**
@@ -9370,7 +9385,7 @@ function isUndefined(value){ return typeof value == $undefined; }
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is defined.
  */
-function isDefined(value){ return typeof value != $undefined; }
+function isDefined(value){return typeof value != $undefined;}
 
 
 /**
@@ -9385,7 +9400,7 @@ function isDefined(value){ return typeof value != $undefined; }
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is an `Object` but not `null`.
  */
-function isObject(value){ return value!=null && typeof value == $object;}
+function isObject(value){return value!=null && typeof value == $object;}
 
 
 /**
@@ -9399,7 +9414,7 @@ function isObject(value){ return value!=null && typeof value == $object;}
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is a `String`.
  */
-function isString(value){ return typeof value == $string;}
+function isString(value){return typeof value == $string;}
 
 
 /**
@@ -9413,7 +9428,7 @@ function isString(value){ return typeof value == $string;}
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is a `Number`.
  */
-function isNumber(value){ return typeof value == $number;}
+function isNumber(value){return typeof value == $number;}
 
 
 /**
@@ -9427,7 +9442,7 @@ function isNumber(value){ return typeof value == $number;}
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is a `Date`.
  */
-function isDate(value){ return value instanceof Date; }
+function isDate(value){return value instanceof Date;}
 
 
 /**
@@ -9441,7 +9456,7 @@ function isDate(value){ return value instanceof Date; }
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is an `Array`.
  */
-function isArray(value) { return value instanceof Array; }
+function isArray(value) {return value instanceof Array;}
 
 
 /**
@@ -9455,7 +9470,7 @@ function isArray(value) { return value instanceof Array; }
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is a `Function`.
  */
-function isFunction(value){ return typeof value == 'function';}
+function isFunction(value){return typeof value == 'function';}
 
 
 /**
@@ -9469,8 +9484,8 @@ function isWindow(obj) {
   return obj && obj.document && obj.location && obj.alert && obj.setInterval;
 }
 
-function isBoolean(value) { return typeof value == $boolean; }
-function isTextNode(node) { return nodeName_(node) == '#text'; }
+function isBoolean(value) {return typeof value == $boolean;}
+function isTextNode(node) {return nodeName_(node) == '#text';}
 
 function trim(value) {
   return isString(value) ? value.replace(/^\s*/, '').replace(/\s*$/, '') : value;
@@ -9990,35 +10005,30 @@ function angularInit(config, document){
   var autobind = config.autobind;
 
   if (autobind) {
-    var element = isString(autobind) ? document.getElementById(autobind) : document,
-        scope = compile(element)(createScope()),
-        $browser = scope.$service('$browser');
-
-    if (config.css)
-      $browser.addCss(config.base_url + config.css);
-    scope.$apply();
+    var element = isString(autobind) ? document.getElementById(autobind) : document;
+    compile(element)().$apply();
   }
 }
 
 function angularJsConfig(document) {
   bindJQuery();
-  var scripts = document.getElementsByTagName("script"),
+  var scripts = document.getElementsByTagName('script'),
+      script = scripts[scripts.length-1],
+      scriptSrc = script.src,
       config = {},
-      match;
-  for(var j = 0; j < scripts.length; j++) {
-    match = (scripts[j].src || "").match(rngScript);
-    if (match) {
-      config.base_url = match[1];
-      extend(config, parseKeyValue(match[6]));
-      eachAttribute(jqLite(scripts[j]), function(value, name){
-        if (/^ng:/.exec(name)) {
-          name = name.substring(3).replace(/-/g, '_');
-          value = value || true;
-          config[name] = value;
-        }
-      });
+      hashPos;
+
+  hashPos = scriptSrc.indexOf('#');
+  if (hashPos != -1) extend(config, parseKeyValue(scriptSrc.substr(hashPos+1)));
+
+  eachAttribute(jqLite(script), function(value, name){
+    if (/^ng:/.exec(name)) {
+      name = name.substring(3).replace(/-/g, '_');
+      value = value || true;
+      config[name] = value;
     }
-  }
+  });
+
   return config;
 }
 
@@ -10074,7 +10084,7 @@ function assertArgFn(arg, name) {
  * - `codeName` – `{string}` – Code name of the release, such as "jiggling-armfat".
  */
 var version = {
-  full: '0.10.4',    // all of these placeholder strings will be replaced by rake's
+  full: '0.10.5',    // all of these placeholder strings will be replaced by rake's
   major: "NG_VERSION_MAJOR",    // compile task
   minor: "NG_VERSION_MINOR",
   dot: "NG_VERSION_DOT",
@@ -10825,7 +10835,8 @@ Scope.prototype = {
         watcher = {
           fn: listenFn,
           last: Number.NaN, // NaN !== NaN. We used this to force $watch to fire on first run.
-          get: get
+          get: get,
+          exp: watchExp
         };
 
     if (!array) {
@@ -10890,7 +10901,8 @@ Scope.prototype = {
         asyncQueue,
         length,
         dirty, ttl = 100,
-        next, current, target = this;
+        next, current, target = this,
+        watchLog = [];
 
     if (target.$$phase) {
       throw Error(target.$$phase + ' already in progress');
@@ -10921,6 +10933,14 @@ Scope.prototype = {
                 dirty = true;
                 watch.last = copy(value);
                 watch.fn(current, value, last);
+                if (ttl < 5) {
+                  if (!watchLog[4-ttl]) watchLog[4-ttl] = [];
+                  if (isFunction(watch.exp)) {
+                    watchLog[4-ttl].push('fn: ' + (watch.exp.name || watch.exp.toString()));
+                  } else {
+                    watchLog[4-ttl].push(watch.exp);
+                  }
+                }
               }
             } catch (e) {
               current.$service('$exceptionHandler')(e);
@@ -10941,7 +10961,8 @@ Scope.prototype = {
       } while ((current = next));
 
       if(!(ttl--)) {
-        throw Error('100 $digest() iterations reached. Aborting!');
+        throw Error('100 $digest() iterations reached. Aborting!\n' +
+            'Watchers fired in the last 5 iterations: ' + toJson(watchLog));
       }
     } while (dirty);
   },
@@ -13089,21 +13110,29 @@ function htmlSanitizeWriter(buf){
  * - [css()](http://api.jquery.com/css/)
  * - [data()](http://api.jquery.com/data/)
  * - [eq()](http://api.jquery.com/eq/)
+ * - [find()](http://api.jquery.com/find/) - Limited to lookups by tag name.
  * - [hasClass()](http://api.jquery.com/hasClass/)
+ * - [html()](http://api.jquery.com/html/)
+ * - [next()](http://api.jquery.com/next/)
  * - [parent()](http://api.jquery.com/parent/)
+ * - [prepend()](http://api.jquery.com/prepend/)
  * - [prop()](http://api.jquery.com/prop/)
+ * - [ready()](http://api.jquery.com/ready/)
  * - [remove()](http://api.jquery.com/remove/)
  * - [removeAttr()](http://api.jquery.com/removeAttr/)
  * - [removeClass()](http://api.jquery.com/removeClass/)
  * - [removeData()](http://api.jquery.com/removeData/)
  * - [replaceWith()](http://api.jquery.com/replaceWith/)
  * - [text()](http://api.jquery.com/text/)
- * - [trigger()](http://api.jquery.com/trigger/)
+ * - [toggleClass()](http://api.jquery.com/toggleClass/)
  * - [unbind()](http://api.jquery.com/unbind/)
+ * - [val()](http://api.jquery.com/val/)
  *
  * ## In addtion to the above, Angular privides an additional method to both jQuery and jQuery lite:
  *
  * - `scope()` - retrieves the current Angular scope of the element.
+ * - `inheritedData()` - same as `data()`, but walks up the DOM until a value is found or the top
+ *   parent element is reached.
  *
  * @param {string|DOMElement} element HTML string or DOMElement to be wrapped into jQuery.
  * @returns {Object} jQuery object.
@@ -14610,7 +14639,7 @@ HashMap.prototype = {
 };
 
 /**
- * A map where multiple values can be added to the same key such that the form a queue.
+ * A map where multiple values can be added to the same key such that they form a queue.
  * @returns {HashQueueMap}
  */
 function HashQueueMap() {}
@@ -18072,17 +18101,27 @@ angularDirective("ng:bind-template", function(expression, element){
  *
  * Instead of writing `ng:bind-attr` statements in your HTML, you can use double-curly markup to
  * specify an <tt ng:non-bindable>{{expression}}</tt> for the value of an attribute.
- * At compile time, the attribute is translated into an `<span ng:bind-attr="{attr:expression}"/>`
+ * At compile time, the attribute is translated into an
+ * `<span ng:bind-attr="{attr:expression}"></span>`.
  *
  * The following HTML snippet shows how to specify `ng:bind-attr`:
+ * <pre>
+ *   <a ng:bind-attr='{"href":"http://www.google.com/search?q={{query}}"}'>Google</a>
+ * </pre>
+ *
+ * This is cumbersome, so as we mentioned using double-curly markup is a prefered way of creating
+ * this binding:
  * <pre>
  *   <a href="http://www.google.com/search?q={{query}}">Google</a>
  * </pre>
  *
- * During compilation, the snippet gets translated to the following:
- * <pre>
- *   <a ng:bind-attr='{"href":"http://www.google.com/search?q={{query}}"}'>Google</a>
- * </pre>
+ * During compilation, the template with attribute markup gets translated to the ng:bind-attr form
+ * mentioned above.
+ *
+ * _Note_: You might want to consider using {@link angular.directive.ng:href ng:href} instead of
+ * `href` if the binding is present in the main application template (`index.html`) and you want to
+ * make sure that a user is not capable of clicking on raw/uncompiled link.
+ *
  *
  * @element ANY
  * @param {string} attribute_json one or more JSON key-value pairs representing
@@ -18104,7 +18143,11 @@ angularDirective("ng:bind-template", function(expression, element){
        <div ng:controller="Ctrl">
         Google for:
         <input type="text" ng:model="query"/>
+        <a ng:bind-attr='{"href":"http://www.google.com/search?q={{query}}"}'>
+          Google
+        </a> (ng:bind-attr) |
         <a href="http://www.google.com/search?q={{query}}">Google</a>
+        (curly binding in attribute val)
        </div>
      </doc:source>
      <doc:scenario>
@@ -18486,21 +18529,11 @@ angularDirective("ng:hide", function(expression, element){
      </doc:scenario>
    </doc:example>
  */
-angularDirective("ng:style", function(expression, element){
-  // TODO(i): this is inefficient (runs on every $digest) and obtrusive (overrides 3rd part css)
-  //   we should change it in a similar way as I changed ng:class
-  return function(element){
-    var resetStyle = getStyle(element);
-    this.$watch(function(scope){
-      var style = scope.$eval(expression) || {}, key, mergedStyle = {};
-      for(key in style) {
-        if (resetStyle[key] === undefined) resetStyle[key] = '';
-        mergedStyle[key] = style[key];
-      }
-      for(key in resetStyle) {
-        mergedStyle[key] = mergedStyle[key] || resetStyle[key];
-      }
-      element.css(mergedStyle);
+angularDirective("ng:style", function(expression, element) {
+  return function(element) {
+    this.$watch(expression, function(scope, newStyles, oldStyles) {
+      if (oldStyles) forEach(oldStyles, function(val, style) { element.css(style, '');});
+      if (newStyles) element.css(newStyles);
     });
   };
 });
@@ -18752,7 +18785,7 @@ angularTextMarkup('option', function(text, textNode, parentElement){
           expect(element('#link-3').attr('href')).toBe("/123");
 
           element('#link-3').click();
-          expect(browser().location().path()).toEqual('/123');
+          expect(browser().window().path()).toEqual('/123');
         });
 
         it('should execute ng:click but not reload when href empty string and name specified', function() {
@@ -18772,7 +18805,7 @@ angularTextMarkup('option', function(text, textNode, parentElement){
           expect(element('#link-6').attr('href')).toBe("/6");
 
           element('#link-6').click();
-          expect(browser().location().path()).toEqual('/6');
+          expect(browser().window().path()).toEqual('/6');
         });
       </doc:scenario>
     </doc:example>
@@ -19349,7 +19382,7 @@ angularWidget('@ng:repeat', function(expression, element){
     // We expect this to be a rare case.
     var lastOrder = new HashQueueMap();
     this.$watch(function(scope){
-      var index = 0,
+      var index, length,
           collection = scope.$eval(rhs),
           collectionLength = size(collection, true),
           childScope,
@@ -19360,52 +19393,64 @@ angularWidget('@ng:repeat', function(expression, element){
           array, last,       // last object information {scope, element, index}
           cursor = iterStartElement;     // current position of the node
 
-      for (key in collection) {
-        if (collection.hasOwnProperty(key) && key.charAt(0) != '$') {
-          last = lastOrder.shift(value = collection[key]);
-          if (last) {
-            // if we have already seen this object, then we need to reuse the
-            // associated scope/element
-            childScope = last.scope;
-            nextOrder.push(value, last);
+      if (!isArray(collection)) {
+        // if object, extract keys, sort them and use to determine order of iteration over obj props
+        array = [];
+        for(key in collection) {
+          if (collection.hasOwnProperty(key) && key.charAt(0) != '$') {
+            array.push(key);
+          }
+        }
+        array.sort();
+      } else {
+        array = collection || [];
+      }
 
-            if (index === last.index) {
-              // do nothing
-              cursor = last.element;
-            } else {
-              // existing item which got moved
-              last.index = index;
-              // This may be a noop, if the element is next, but I don't know of a good way to
-              // figure this out,  since it would require extra DOM access, so let's just hope that
-              // the browsers realizes that it is noop, and treats it as such.
-              cursor.after(last.element);
-              cursor = last.element;
-            }
+      // we are not using forEach for perf reasons (trying to avoid #call)
+      for (index = 0, length = array.length; index < length; index++) {
+        key = (collection === array) ? index : array[index];
+        value = collection[key];
+        last = lastOrder.shift(value);
+        if (last) {
+          // if we have already seen this object, then we need to reuse the
+          // associated scope/element
+          childScope = last.scope;
+          nextOrder.push(value, last);
+
+          if (index === last.index) {
+            // do nothing
+            cursor = last.element;
           } else {
-            // new item which we don't know about
-            childScope = parentScope.$new();
+            // existing item which got moved
+            last.index = index;
+            // This may be a noop, if the element is next, but I don't know of a good way to
+            // figure this out,  since it would require extra DOM access, so let's just hope that
+            // the browsers realizes that it is noop, and treats it as such.
+            cursor.after(last.element);
+            cursor = last.element;
           }
+        } else {
+          // new item which we don't know about
+          childScope = parentScope.$new();
+        }
 
-          childScope[valueIdent] = collection[key];
-          if (keyIdent) childScope[keyIdent] = key;
-          childScope.$index = index;
-          childScope.$position = index == 0
-              ? 'first'
-              : (index == collectionLength - 1 ? 'last' : 'middle');
+        childScope[valueIdent] = value;
+        if (keyIdent) childScope[keyIdent] = key;
+        childScope.$index = index;
+        childScope.$position = index == 0
+            ? 'first'
+            : (index == collectionLength - 1 ? 'last' : 'middle');
 
-          if (!last) {
-            linker(childScope, function(clone){
-              cursor.after(clone);
-              last = {
-                  scope: childScope,
-                  element: (cursor = clone),
-                  index: index
-                };
-              nextOrder.push(value, last);
-            });
-          }
-
-          index ++;
+        if (!last) {
+          linker(childScope, function(clone){
+            cursor.after(clone);
+            last = {
+                scope: childScope,
+                element: (cursor = clone),
+                index: index
+              };
+            nextOrder.push(value, last);
+          });
         }
       }
 
@@ -19539,13 +19584,16 @@ angularWidget('ng:view', function(element) {
         changeCounter++;
       });
 
-      this.$watch(function() {return changeCounter;}, function() {
+      this.$watch(function() {return changeCounter;}, function(scope, newChangeCounter) {
         var template = $route.current && $route.current.template;
         if (template) {
           //xhr's callback must be async, see commit history for more info
           $xhr('GET', template, function(code, response) {
-            element.html(response);
-            compiler.compile(element)($route.current.scope);
+            // ignore callback if another route change occured since
+            if (newChangeCounter == changeCounter) {
+              element.html(response);
+              compiler.compile(element)($route.current.scope);
+            }
           });
         } else {
           element.html('');
@@ -22685,11 +22733,14 @@ angular.scenario.dsl('sleep', function() {
  *    browser().navigateTo(url) Loads the url into the frame
  *    browser().navigateTo(url, fn) where fn(url) is called and returns the URL to navigate to
  *    browser().reload() refresh the page (reload the same URL)
- *    browser().location().href() the full URL of the page
- *    browser().location().hash() the full hash in the url
- *    browser().location().path() the full path in the url
- *    browser().location().hashSearch() the hashSearch Object from angular
- *    browser().location().hashPath() the hashPath string from angular
+ *    browser().window.href() window.location.href
+ *    browser().window.path() window.location.pathname
+ *    browser().window.search() window.location.search
+ *    browser().window.hash() window.location.hash without # prefix
+ *    browser().location().url() see angular.service.$location#url
+ *    browser().location().path() see angular.service.$location#path
+ *    browser().location().search() see angular.service.$location#search
+ *    browser().location().hash() see angular.service.$location#hash
  */
 angular.scenario.dsl('browser', function() {
   var chain = {};
@@ -22716,42 +22767,60 @@ angular.scenario.dsl('browser', function() {
     });
   };
 
-  chain.location = function() {
+  chain.window = function() {
     var api = {};
 
     api.href = function() {
-      return this.addFutureAction('browser url', function($window, $document, done) {
+      return this.addFutureAction('window.location.href', function($window, $document, done) {
         done(null, $window.location.href);
       });
     };
 
-    api.hash = function() {
-      return this.addFutureAction('browser url hash', function($window, $document, done) {
-        done(null, $window.location.hash.replace('#', ''));
-      });
-    };
-
     api.path = function() {
-      return this.addFutureAction('browser url path', function($window, $document, done) {
+      return this.addFutureAction('window.location.path', function($window, $document, done) {
         done(null, $window.location.pathname);
       });
     };
 
     api.search = function() {
-      return this.addFutureAction('browser url search', function($window, $document, done) {
-        done(null, $window.angular.scope().$service('$location').search);
+      return this.addFutureAction('window.location.search', function($window, $document, done) {
+        done(null, $window.location.search);
       });
     };
 
-    api.hashSearch = function() {
-      return this.addFutureAction('browser url hash search', function($window, $document, done) {
-        done(null, $window.angular.scope().$service('$location').hashSearch);
+    api.hash = function() {
+      return this.addFutureAction('window.location.hash', function($window, $document, done) {
+        done(null, $window.location.hash.replace('#', ''));
       });
     };
 
-    api.hashPath = function() {
-      return this.addFutureAction('browser url hash path', function($window, $document, done) {
-        done(null, $window.angular.scope().$service('$location').hashPath);
+    return api;
+  };
+
+  chain.location = function() {
+    var api = {};
+
+    api.url = function() {
+      return this.addFutureAction('$location.url()', function($window, $document, done) {
+        done(null, $window.angular.scope().$service('$location').url());
+      });
+    };
+
+    api.path = function() {
+      return this.addFutureAction('$location.path()', function($window, $document, done) {
+        done(null, $window.angular.scope().$service('$location').path());
+      });
+    };
+
+    api.search = function() {
+      return this.addFutureAction('$location.search()', function($window, $document, done) {
+        done(null, $window.angular.scope().$service('$location').search());
+      });
+    };
+
+    api.hash = function() {
+      return this.addFutureAction('$location.hash()', function($window, $document, done) {
+        done(null, $window.angular.scope().$service('$location').hash());
       });
     };
 
@@ -23092,7 +23161,7 @@ angular.scenario.output('html', function(context, runner, model) {
 
   context.append(
     '<div id="header">' +
-    '  <h1><span class="angular">&lt;angular/&gt;</span>: Scenario Test Runner</h1>' +
+    '  <h1><span class="angular">AngularJS</span>: Scenario Test Runner</h1>' +
     '  <ul id="status-legend" class="status-display">' +
     '    <li class="status-error">0 Errors</li>' +
     '    <li class="status-failure">0 Failures</li>' +
@@ -23328,5 +23397,5 @@ if (config.autotest) {
 }
 })(window, document);
 
-angular.element(document).find('head').append('<style type="text/css">@charset "UTF-8";\n\n[ng\\:cloak], .ng-cloak {\n  display: none;\n}\n\n.ng-format-negative {\n  color: red;\n}\n</style>');
+angular.element(document).find('head').append('<style type="text/css">@charset "UTF-8";\n\n[ng\\:cloak], .ng-cloak {\n  display: none;\n}\n\n.ng-format-negative {\n  color: red;\n}\n\nng\\:form {\n  display: block;\n}\n</style>');
 angular.element(document).find('head').append('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#system-error {\n  font-size: 1.5em;\n  text-align: center;\n}\n\n#json, #xml {\n  display: none;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#application h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#application,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#application {\n  margin: 10px;\n}\n\n#application iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#application .popout {\n  float: right;\n}\n\n#application iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe {\n  padding-bottom: 0.5em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#application h2 {\n  background-color: #efefef;\n}\n\n#application {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');
