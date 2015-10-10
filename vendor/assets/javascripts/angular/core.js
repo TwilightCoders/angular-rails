@@ -27,6 +27,25 @@
 if (typeof document.getAttribute == $undefined)
   document.getAttribute = function() {};
 
+//The below may not be true on browsers in the Turkish locale.
+var lowercase = function (value){ return isString(value) ? value.toLowerCase() : value; };
+var uppercase = function (value){ return isString(value) ? value.toUpperCase() : value; };
+var manualLowercase = function (s) {
+  return isString(s) ? s.replace(/[A-Z]/g,
+      function (ch) {return fromCharCode(ch.charCodeAt(0) | 32); }) : s;
+};
+var manualUppercase = function (s) {
+  return isString(s) ? s.replace(/[a-z]/g,
+      function (ch) {return fromCharCode(ch.charCodeAt(0) & ~32); }) : s;
+};
+if ('i' !== 'I'.toLowerCase()) {
+  lowercase = manualLowercase;
+  uppercase = manulaUppercase;
+}
+
+function fromCharCode(code) { return String.fromCharCode(code); }
+
+
 var _undefined        = undefined,
     _null             = null,
     $$element         = '$element',
@@ -158,15 +177,26 @@ function isNumber(value){ return typeof value == $number;}
 function isArray(value) { return value instanceof Array; }
 function isFunction(value){ return typeof value == $function;}
 function isTextNode(node) { return nodeName(node) == '#text'; }
-function lowercase(value){ return isString(value) ? value.toLowerCase() : value; }
-function uppercase(value){ return isString(value) ? value.toUpperCase() : value; }
 function trim(value) { return isString(value) ? value.replace(/^\s*/, '').replace(/\s*$/, '') : value; }
 function isElement(node) {
   return node && (node.nodeName || node instanceof JQLite || (jQuery && node instanceof jQuery));
 }
 
-function HTML(html) {
+/**
+ * HTML class which is the only class which can be used in ng:bind to inline HTML for security reasons.
+ * @constructor
+ * @param html raw (unsafe) html
+ * @param {string=} option if set to 'usafe' then get method will return raw (unsafe/unsanitized) html
+ */
+function HTML(html, option) {
   this.html = html;
+  this.get = lowercase(option) == 'unsafe' ?
+    valueFn(html) :
+    function htmlSanitize() {
+      var buf = [];
+      htmlParser(html, htmlSanitizeWriter(buf));
+      return buf.join('');
+    };
 }
 
 if (msie) {
@@ -321,16 +351,6 @@ function setHtml(node, html) {
   }
 }
 
-function escapeHtml(html) {
-  if (!html || !html.replace)
-    return html;
-  return html.
-      replace(/&/g, '&amp;').
-      replace(/</g, '&lt;').
-      replace(/>/g, '&gt;');
-}
-
-
 function isRenderableElement(element) {
   var name = element && element[0] && element[0].nodeName;
   return name && name.charAt(0) != '#' &&
@@ -350,13 +370,6 @@ function elementError(element, type, error) {
       element.removeAttr(type);
     }
   }
-}
-
-function escapeAttr(html) {
-  if (!html || !html.replace)
-    return html;
-  return html.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g,
-      '&quot;');
 }
 
 function concat(array1, array2, index) {
@@ -1187,7 +1200,7 @@ function lex(text, parseStringsForObjects){
   }
   function isWhitespace(ch) {
     return ch == ' ' || ch == '\r' || ch == '\t' ||
-           ch == '\n' || ch == '\v';
+           ch == '\n' || ch == '\v' || ch == '\u00A0'; // IE treats non-breaking space as \u00A0
   }
   function isIdent(ch) {
     return 'a' <= ch && ch <= 'z' ||
@@ -2103,6 +2116,296 @@ function Browser(location, document, head, XHR, $log) {
     head.append(script);
   };
 }
+/*
+ * HTML Parser By Misko Hevery (misko@hevery.com)
+ * based on:  HTML Parser By John Resig (ejohn.org)
+ * Original code by Erik Arvidsson, Mozilla Public License
+ * http://erik.eae.net/simplehtmlparser/simplehtmlparser.js
+ *
+ * // Use like so:
+ * htmlParser(htmlString, {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * });
+ *
+ */
+
+// Regular Expressions for parsing tags and attributes
+var START_TAG_REGEXP = /^<\s*([\w:]+)((?:\s+\w+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)\s*>/,
+  END_TAG_REGEXP = /^<\s*\/\s*([\w:]+)[^>]*>/,
+  ATTR_REGEXP = /(\w+)(?:\s*=\s*(?:(?:"((?:\\.|[^"])*)")|(?:'((?:\\.|[^'])*)')|([^>\s]+)))?/g,
+  BEGIN_TAG_REGEXP = /^</,
+  BEGING_END_TAGE_REGEXP = /^<\s*\//,
+  COMMENT_REGEXP = /<!--(.*?)-->/g,
+  CDATA_REGEXP = /<!\[CDATA\[(.*?)]]>/g;
+
+// Empty Elements - HTML 4.01
+var emptyElements = makeMap("area,base,basefont,br,col,hr,img,input,isindex,link,param");
+
+// Block Elements - HTML 4.01
+var blockElements = makeMap("address,blockquote,button,center,dd,del,dir,div,dl,dt,fieldset,"+
+    "form,hr,ins,isindex,li,map,menu,ol,p,pre,script,table,tbody,td,tfoot,th,thead,tr,ul");
+
+// Inline Elements - HTML 4.01
+var inlineElements = makeMap("a,abbr,acronym,b,basefont,bdo,big,br,button,cite,code,del,dfn,em,font,i,img,"+
+    "input,ins,kbd,label,map,q,s,samp,select,small,span,strike,strong,sub,sup,textarea,tt,u,var");
+
+// Elements that you can, intentionally, leave open
+// (and which close themselves)
+var closeSelfElements = makeMap("colgroup,dd,dt,li,options,p,td,tfoot,th,thead,tr");
+
+// Attributes that have their values filled in disabled="disabled"
+var fillAttrs = makeMap("checked,compact,declare,defer,disabled,ismap,multiple,nohref,noresize,noshade,nowrap,readonly,selected");
+
+// Special Elements (can contain anything)
+var specialElements = makeMap("script,style");
+
+var validElements = extend({}, emptyElements, blockElements, inlineElements, closeSelfElements);
+var validAttrs = extend({}, fillAttrs, makeMap(
+    'abbr,align,alink,alt,archive,axis,background,bgcolor,border,cellpadding,cellspacing,cite,class,classid,clear,code,codebase,'+
+    'codetype,color,cols,colspan,content,coords,data,dir,face,for,headers,height,href,hreflang,hspace,id,label,lang,language,'+
+    'link,longdesc,marginheight,marginwidth,maxlength,media,method,name,nowrap,profile,prompt,rel,rev,rows,rowspan,rules,scheme,'+
+    'scope,scrolling,shape,size,span,src,standby,start,summary,tabindex,target,text,title,type,usemap,valign,value,valuetype,'+
+    'vlink,vspace,width'));
+
+/**
+ * @example
+ * htmlParser(htmlString, {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * });
+ *
+ * @param {string} html string
+ * @param {object} handler
+ */
+var htmlParser = function( html, handler ) {
+  var index, chars, match, stack = [], last = html;
+  stack.last = function(){ return stack[ stack.length - 1 ]; };
+
+  while ( html ) {
+    chars = true;
+
+    // Make sure we're not in a script or style element
+    if ( !stack.last() || !specialElements[ stack.last() ] ) {
+
+      // Comment
+      if ( html.indexOf("<!--") === 0 ) {
+        index = html.indexOf("-->");
+
+        if ( index >= 0 ) {
+          if ( handler.comment )
+            handler.comment( html.substring( 4, index ) );
+          html = html.substring( index + 3 );
+          chars = false;
+        }
+
+      // end tag
+      } else if ( BEGING_END_TAGE_REGEXP.test(html) ) {
+        match = html.match( END_TAG_REGEXP );
+
+        if ( match ) {
+          html = html.substring( match[0].length );
+          match[0].replace( END_TAG_REGEXP, parseEndTag );
+          chars = false;
+        }
+
+      // start tag
+      } else if ( BEGIN_TAG_REGEXP.test(html) ) {
+        match = html.match( START_TAG_REGEXP );
+
+        if ( match ) {
+          html = html.substring( match[0].length );
+          match[0].replace( START_TAG_REGEXP, parseStartTag );
+          chars = false;
+        }
+      }
+
+      if ( chars ) {
+        index = html.indexOf("<");
+
+        var text = index < 0 ? html : html.substring( 0, index );
+        html = index < 0 ? "" : html.substring( index );
+
+        if ( handler.chars )
+          handler.chars( text );
+      }
+
+    } else {
+      html = html.replace(new RegExp("(.*)<\\s*\\/\\s*" + stack.last() + "[^>]*>", 'i'), function(all, text){
+        text = text.
+          replace(COMMENT_REGEXP, "$1").
+          replace(CDATA_REGEXP, "$1");
+
+        if ( handler.chars )
+          handler.chars( text );
+
+        return "";
+      });
+
+      parseEndTag( "", stack.last() );
+    }
+
+    if ( html == last ) {
+      throw "Parse Error: " + html;
+    }
+    last = html;
+  }
+
+  // Clean up any remaining tags
+  parseEndTag();
+
+  function parseStartTag( tag, tagName, rest, unary ) {
+    tagName = lowercase(tagName);
+    if ( blockElements[ tagName ] ) {
+      while ( stack.last() && inlineElements[ stack.last() ] ) {
+        parseEndTag( "", stack.last() );
+      }
+    }
+
+    if ( closeSelfElements[ tagName ] && stack.last() == tagName ) {
+      parseEndTag( "", tagName );
+    }
+
+    unary = emptyElements[ tagName ] || !!unary;
+
+    if ( !unary )
+      stack.push( tagName );
+
+    if ( handler.start ) {
+      var attrs = {};
+
+      rest.replace(ATTR_REGEXP, function(match, name) {
+        var value = arguments[2] ? arguments[2] :
+          arguments[3] ? arguments[3] :
+          arguments[4] ? arguments[4] :
+          fillAttrs[name] ? name : "";
+
+        attrs[name] = value; //value.replace(/(^|[^\\])"/g, '$1\\\"') //"
+      });
+
+      if ( handler.start )
+        handler.start( tagName, attrs, unary );
+    }
+  }
+
+  function parseEndTag( tag, tagName ) {
+    var pos = 0, i;
+    tagName = lowercase(tagName);
+    if ( tagName )
+      // Find the closest opened tag of the same type
+      for ( pos = stack.length - 1; pos >= 0; pos-- )
+        if ( stack[ pos ] == tagName )
+          break;
+
+    if ( pos >= 0 ) {
+      // Close all the open elements, up the stack
+      for ( i = stack.length - 1; i >= pos; i-- )
+        if ( handler.end )
+          handler.end( stack[ i ] );
+
+      // Remove the open elements from the stack
+      stack.length = pos;
+    }
+  }
+};
+
+/**
+ * @param str 'key1,key2,...'
+ * @returns {object} in the form of {key1:true, key2:true, ...}
+ */
+function makeMap(str){
+  var obj = {}, items = str.split(","), i;
+  for ( i = 0; i < items.length; i++ )
+    obj[ items[i] ] = true;
+  return obj;
+}
+
+/*
+ * For attack vectors see: http://ha.ckers.org/xss.html
+ */
+var JAVASCRIPT_URL = /^javascript:/i,
+    NBSP_REGEXP = /&nbsp;/gim,
+    HEX_ENTITY_REGEXP = /&#x([\da-f]*);?/igm,
+    DEC_ENTITY_REGEXP = /&#(\d+);?/igm,
+    CHAR_REGEXP = /[\w:]/gm,
+    HEX_DECODE = function(match, code){return fromCharCode(parseInt(code,16));},
+    DEC_DECODE = function(match, code){return fromCharCode(code);};
+/**
+ * @param {string} url
+ * @returns true if url decodes to something which starts with 'javascript:' hence unsafe
+ */
+function isJavaScriptUrl(url) {
+  var chars = [];
+  url.replace(NBSP_REGEXP, '').
+      replace(HEX_ENTITY_REGEXP, HEX_DECODE).
+      replace(DEC_ENTITY_REGEXP, DEC_DECODE).
+      // Remove all non \w: characters, unfurtunetly value.replace(/[\w:]/,'') can be defeated using \u0000
+      replace(CHAR_REGEXP, function(ch){chars.push(ch);});
+  return JAVASCRIPT_URL.test(lowercase(chars.join('')));
+}
+
+/**
+ * create an HTML/XML writer which writes to buffer
+ * @param {Array} buf use buf.jain('') to get out sanitized html string
+ * @returns {object} in the form of {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * }
+ */
+function htmlSanitizeWriter(buf){
+  var ignore = false;
+  var out = bind(buf, buf.push);
+  return {
+    start: function(tag, attrs, unary){
+      tag = lowercase(tag);
+      if (!ignore && specialElements[tag]) {
+        ignore = tag;
+      }
+      if (!ignore && validElements[tag]) {
+        out('<');
+        out(tag);
+        foreach(attrs, function(value, key){
+          if (validAttrs[lowercase(key)] && !isJavaScriptUrl(value)) {
+            out(' ');
+            out(key);
+            out('="');
+            out(value.
+                replace(/</g, '&lt;').
+                replace(/>/g, '&gt;').
+                replace(/\"/g,'&quot;'));
+            out('"');
+          }
+        });
+        out(unary ? '/>' : '>');
+      }
+    },
+    end: function(tag){
+        tag = lowercase(tag);
+        if (!ignore && validElements[tag]) {
+          out('</');
+          out(tag);
+          out('>');
+        }
+        if (tag == ignore) {
+          ignore = false;
+        }
+      },
+    chars: function(chars){
+        if (!ignore) {
+          out(chars.
+              replace(/&(\w+[&;\W])?/g, function(match, entity){return entity?match:'&amp;';}).
+              replace(/</g, '&lt;').
+              replace(/>/g, '&gt;'));
+        }
+      }
+  };
+}
 //////////////////////////////////
 //JQLite
 //////////////////////////////////
@@ -2554,6 +2857,12 @@ var angularString = {
     }
     return chars.join('');
   },
+
+  /**
+   * Tries to convert input to date and if successful returns the date, otherwise returns the input.
+   * @param {string} string
+   * @return {(Date|string)}
+   */
   'toDate':function(string){
     var match;
     if (typeof string == 'string' &&
@@ -2653,7 +2962,7 @@ function padNumber(num, digits, trim) {
 }
 function dateGetter(name, size, offset, trim) {
   return function(date) {
-    var value = date['get' + name].call(date);
+    var value = date['get' + name]();
     if (offset > 0 || value > -offset)
       value += offset;
     if (value === 0 && offset == -12 ) value = 12;
@@ -2682,9 +2991,19 @@ var DATE_FORMATS = {
         }
 };
 var DATE_FORMATS_SPLIT = /([^yMdHhmsaZ]*)(y+|M+|d+|H+|h+|m+|s+|a|Z)(.*)/;
+var NUMBER_STRING = /^\d+$/;
 
 angularFilter.date = function(date, format) {
-  if (!(date instanceof Date)) return date;
+  if (isString(date) && NUMBER_STRING.test(date)) {
+    date = parseInt(date, 10);
+  }
+
+  if (isNumber(date)) {
+    date = new Date(date);
+  } else if (!(date instanceof Date)) {
+    return date;
+  }
+
   var text = date.toLocaleDateString(), fn;
   if (format && isString(format)) {
     text = '';
@@ -2710,8 +3029,12 @@ angularFilter.lowercase = lowercase;
 
 angularFilter.uppercase = uppercase;
 
-angularFilter.html =  function(html){
-  return new HTML(html);
+/**</>
+ * @exportedAs filter:html
+ * @param {string=} option if 'unsafe' then do not sanitize the HTML input
+ */
+angularFilter.html =  function(html, option){
+  return new HTML(html, option);
 };
 
 angularFilter.linky = function(text){
@@ -2723,16 +3046,19 @@ angularFilter.linky = function(text){
   var match;
   var raw = text;
   var html = [];
+  var writer = htmlSanitizeWriter(html);
+  var url;
+  var i;
   while (match=raw.match(URL)) {
-    var url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
-    var i = raw.indexOf(url);
-    html.push(escapeHtml(raw.substr(0, i)));
-    html.push('<a href="' + url + '">');
-    html.push(url);
-    html.push('</a>');
+    url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
+    i = raw.indexOf(url);
+    writer.chars(raw.substr(0, i));
+    writer.start('a', {href:url});
+    writer.chars(url);
+    writer.end('a');
     raw = raw.substring(i + url.length);
   }
-  html.push(escapeHtml(raw));
+  writer.chars(raw);
   return new HTML(html.join(''));
 };
 function formatter(format, parse) {return {'format':format, 'parse':parse || format};}
@@ -3546,7 +3872,7 @@ angularServiceInject('$cookieStore', function($store) {
     }
   };
 
-}, ['$cookies'], EAGER_PUBLISHED);
+}, ['$cookies']);
 angularDirective("ng:init", function(expression){
   return function(element){
     this.$tryEval(expression, element);
@@ -3575,15 +3901,19 @@ angularDirective("ng:bind", function(expression){
   return function(element) {
     var lastValue = noop, lastError = noop;
     this.$onEval(function() {
-      var error, value, isHtml, isDomElement,
+      var error, value, html, isHtml, isDomElement,
           oldElement = this.hasOwnProperty($$element) ? this.$element : _undefined;
       this.$element = element;
       value = this.$tryEval(expression, function(e){
         error = toJson(e);
       });
       this.$element = oldElement;
+      // If we are HTML than save the raw HTML data so that we don't
+      // recompute sanitization since it is expensive.
+      // TODO: turn this into a more generic way to compute this
+      if (isHtml = (value instanceof HTML))
+        value = (html = value).html;
       if (lastValue === value && lastError == error) return;
-      isHtml = value instanceof HTML;
       isDomElement = isElement(value);
       if (!isHtml && !isDomElement && isObject(value)) {
         value = toJson(value);
@@ -3594,7 +3924,7 @@ angularDirective("ng:bind", function(expression){
         elementError(element, NG_EXCEPTION, error);
         if (error) value = error;
         if (isHtml) {
-          element.html(value.html);
+          element.html(html.get());
         } else if (isDomElement) {
           element.html('');
           element.append(value);
@@ -3754,7 +4084,7 @@ angularWidget("@ng:repeat", function(expression, element){
  *
  * Events that are handled via these handler are always configured not to propagate further.
  *
- * TODO: maybe we should consider allowing users to control even propagation in the future.
+ * TODO: maybe we should consider allowing users to control event propagation in the future.
  */
 angularDirective("ng:click", function(expression, element){
   return function(element){
@@ -3766,6 +4096,25 @@ angularDirective("ng:click", function(expression, element){
     });
   };
 });
+
+
+/**
+ * Enables binding angular expressions to onsubmit events.
+ *
+ * Additionally it prevents the default action (which for form means sending the request to the
+ * server and reloading the current page).
+ */
+angularDirective("ng:submit", function(expression, element) {
+  return function(element) {
+    var self = this;
+    element.bind('submit', function(event) {
+      self.$tryEval(expression, element);
+      self.$root.$eval();
+      event.preventDefault();
+    });
+  };
+});
+
 
 angularDirective("ng:watch", function(expression, element){
   return function(element){
@@ -4123,10 +4472,6 @@ function inputWidget(events, modelAccessor, viewAccessor, initFn) {
         lastValue = model.get();
         scope.$tryEval(action, element);
         scope.$root.$eval();
-        // if we have noop initFn than we are just a button,
-        // therefore we want to prevent default action
-        if(initFn == noop)
-          event.preventDefault();
       });
     }
     function updateView(){
@@ -4176,11 +4521,19 @@ angularWidget('ng:include', function(element){
     return extend(function(xhr, element){
       var scope = this, childScope;
       var changeCounter = 0;
+      var preventRecursion = false;
       function incrementChange(){ changeCounter++;}
       this.$watch(srcExp, incrementChange);
       this.$watch(scopeExp, incrementChange);
       scope.$onEval(function(){
-        if (childScope) childScope.$eval();
+        if (childScope && !preventRecursion) {
+          preventRecursion = true;
+          try {
+            childScope.$eval();
+          } finally {
+            preventRecursion = false;
+          }
+        }
       });
       this.$watch(function(){return changeCounter;}, function(){
         var src = this.$eval(srcExp),

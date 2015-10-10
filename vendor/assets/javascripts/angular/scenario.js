@@ -6262,10 +6262,30 @@ window.jQuery = window.$ = jQuery;
  * THE SOFTWARE.
  */
 (function(window, document, previousOnLoad){
-  var _jQuery = window.jQuery.noConflict(true);////////////////////////////////////
+  var _jQuery = window.jQuery.noConflict(true);
+////////////////////////////////////
 
 if (typeof document.getAttribute == $undefined)
   document.getAttribute = function() {};
+
+//The below may not be true on browsers in the Turkish locale.
+var lowercase = function (value){ return isString(value) ? value.toLowerCase() : value; };
+var uppercase = function (value){ return isString(value) ? value.toUpperCase() : value; };
+var manualLowercase = function (s) {
+  return isString(s) ? s.replace(/[A-Z]/g,
+      function (ch) {return fromCharCode(ch.charCodeAt(0) | 32); }) : s;
+};
+var manualUppercase = function (s) {
+  return isString(s) ? s.replace(/[a-z]/g,
+      function (ch) {return fromCharCode(ch.charCodeAt(0) & ~32); }) : s;
+};
+if ('i' !== 'I'.toLowerCase()) {
+  lowercase = manualLowercase;
+  uppercase = manulaUppercase;
+}
+
+function fromCharCode(code) { return String.fromCharCode(code); }
+
 
 var _undefined        = undefined,
     _null             = null,
@@ -6398,15 +6418,26 @@ function isNumber(value){ return typeof value == $number;}
 function isArray(value) { return value instanceof Array; }
 function isFunction(value){ return typeof value == $function;}
 function isTextNode(node) { return nodeName(node) == '#text'; }
-function lowercase(value){ return isString(value) ? value.toLowerCase() : value; }
-function uppercase(value){ return isString(value) ? value.toUpperCase() : value; }
 function trim(value) { return isString(value) ? value.replace(/^\s*/, '').replace(/\s*$/, '') : value; }
 function isElement(node) {
   return node && (node.nodeName || node instanceof JQLite || (jQuery && node instanceof jQuery));
 }
 
-function HTML(html) {
+/**
+ * HTML class which is the only class which can be used in ng:bind to inline HTML for security reasons.
+ * @constructor
+ * @param html raw (unsafe) html
+ * @param {string=} option if set to 'usafe' then get method will return raw (unsafe/unsanitized) html
+ */
+function HTML(html, option) {
   this.html = html;
+  this.get = lowercase(option) == 'unsafe' ?
+    valueFn(html) :
+    function htmlSanitize() {
+      var buf = [];
+      htmlParser(html, htmlSanitizeWriter(buf));
+      return buf.join('');
+    };
 }
 
 if (msie) {
@@ -6561,16 +6592,6 @@ function setHtml(node, html) {
   }
 }
 
-function escapeHtml(html) {
-  if (!html || !html.replace)
-    return html;
-  return html.
-      replace(/&/g, '&amp;').
-      replace(/</g, '&lt;').
-      replace(/>/g, '&gt;');
-}
-
-
 function isRenderableElement(element) {
   var name = element && element[0] && element[0].nodeName;
   return name && name.charAt(0) != '#' &&
@@ -6590,13 +6611,6 @@ function elementError(element, type, error) {
       element.removeAttr(type);
     }
   }
-}
-
-function escapeAttr(html) {
-  if (!html || !html.replace)
-    return html;
-  return html.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g,
-      '&quot;');
 }
 
 function concat(array1, array2, index) {
@@ -7427,7 +7441,7 @@ function lex(text, parseStringsForObjects){
   }
   function isWhitespace(ch) {
     return ch == ' ' || ch == '\r' || ch == '\t' ||
-           ch == '\n' || ch == '\v';
+           ch == '\n' || ch == '\v' || ch == '\u00A0'; // IE treats non-breaking space as \u00A0
   }
   function isIdent(ch) {
     return 'a' <= ch && ch <= 'z' ||
@@ -8343,6 +8357,296 @@ function Browser(location, document, head, XHR, $log) {
     head.append(script);
   };
 }
+/*
+ * HTML Parser By Misko Hevery (misko@hevery.com)
+ * based on:  HTML Parser By John Resig (ejohn.org)
+ * Original code by Erik Arvidsson, Mozilla Public License
+ * http://erik.eae.net/simplehtmlparser/simplehtmlparser.js
+ *
+ * // Use like so:
+ * htmlParser(htmlString, {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * });
+ *
+ */
+
+// Regular Expressions for parsing tags and attributes
+var START_TAG_REGEXP = /^<\s*([\w:]+)((?:\s+\w+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)\s*>/,
+  END_TAG_REGEXP = /^<\s*\/\s*([\w:]+)[^>]*>/,
+  ATTR_REGEXP = /(\w+)(?:\s*=\s*(?:(?:"((?:\\.|[^"])*)")|(?:'((?:\\.|[^'])*)')|([^>\s]+)))?/g,
+  BEGIN_TAG_REGEXP = /^</,
+  BEGING_END_TAGE_REGEXP = /^<\s*\//,
+  COMMENT_REGEXP = /<!--(.*?)-->/g,
+  CDATA_REGEXP = /<!\[CDATA\[(.*?)]]>/g;
+
+// Empty Elements - HTML 4.01
+var emptyElements = makeMap("area,base,basefont,br,col,hr,img,input,isindex,link,param");
+
+// Block Elements - HTML 4.01
+var blockElements = makeMap("address,blockquote,button,center,dd,del,dir,div,dl,dt,fieldset,"+
+    "form,hr,ins,isindex,li,map,menu,ol,p,pre,script,table,tbody,td,tfoot,th,thead,tr,ul");
+
+// Inline Elements - HTML 4.01
+var inlineElements = makeMap("a,abbr,acronym,b,basefont,bdo,big,br,button,cite,code,del,dfn,em,font,i,img,"+
+    "input,ins,kbd,label,map,q,s,samp,select,small,span,strike,strong,sub,sup,textarea,tt,u,var");
+
+// Elements that you can, intentionally, leave open
+// (and which close themselves)
+var closeSelfElements = makeMap("colgroup,dd,dt,li,options,p,td,tfoot,th,thead,tr");
+
+// Attributes that have their values filled in disabled="disabled"
+var fillAttrs = makeMap("checked,compact,declare,defer,disabled,ismap,multiple,nohref,noresize,noshade,nowrap,readonly,selected");
+
+// Special Elements (can contain anything)
+var specialElements = makeMap("script,style");
+
+var validElements = extend({}, emptyElements, blockElements, inlineElements, closeSelfElements);
+var validAttrs = extend({}, fillAttrs, makeMap(
+    'abbr,align,alink,alt,archive,axis,background,bgcolor,border,cellpadding,cellspacing,cite,class,classid,clear,code,codebase,'+
+    'codetype,color,cols,colspan,content,coords,data,dir,face,for,headers,height,href,hreflang,hspace,id,label,lang,language,'+
+    'link,longdesc,marginheight,marginwidth,maxlength,media,method,name,nowrap,profile,prompt,rel,rev,rows,rowspan,rules,scheme,'+
+    'scope,scrolling,shape,size,span,src,standby,start,summary,tabindex,target,text,title,type,usemap,valign,value,valuetype,'+
+    'vlink,vspace,width'));
+
+/**
+ * @example
+ * htmlParser(htmlString, {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * });
+ *
+ * @param {string} html string
+ * @param {object} handler
+ */
+var htmlParser = function( html, handler ) {
+  var index, chars, match, stack = [], last = html;
+  stack.last = function(){ return stack[ stack.length - 1 ]; };
+
+  while ( html ) {
+    chars = true;
+
+    // Make sure we're not in a script or style element
+    if ( !stack.last() || !specialElements[ stack.last() ] ) {
+
+      // Comment
+      if ( html.indexOf("<!--") === 0 ) {
+        index = html.indexOf("-->");
+
+        if ( index >= 0 ) {
+          if ( handler.comment )
+            handler.comment( html.substring( 4, index ) );
+          html = html.substring( index + 3 );
+          chars = false;
+        }
+
+      // end tag
+      } else if ( BEGING_END_TAGE_REGEXP.test(html) ) {
+        match = html.match( END_TAG_REGEXP );
+
+        if ( match ) {
+          html = html.substring( match[0].length );
+          match[0].replace( END_TAG_REGEXP, parseEndTag );
+          chars = false;
+        }
+
+      // start tag
+      } else if ( BEGIN_TAG_REGEXP.test(html) ) {
+        match = html.match( START_TAG_REGEXP );
+
+        if ( match ) {
+          html = html.substring( match[0].length );
+          match[0].replace( START_TAG_REGEXP, parseStartTag );
+          chars = false;
+        }
+      }
+
+      if ( chars ) {
+        index = html.indexOf("<");
+
+        var text = index < 0 ? html : html.substring( 0, index );
+        html = index < 0 ? "" : html.substring( index );
+
+        if ( handler.chars )
+          handler.chars( text );
+      }
+
+    } else {
+      html = html.replace(new RegExp("(.*)<\\s*\\/\\s*" + stack.last() + "[^>]*>", 'i'), function(all, text){
+        text = text.
+          replace(COMMENT_REGEXP, "$1").
+          replace(CDATA_REGEXP, "$1");
+
+        if ( handler.chars )
+          handler.chars( text );
+
+        return "";
+      });
+
+      parseEndTag( "", stack.last() );
+    }
+
+    if ( html == last ) {
+      throw "Parse Error: " + html;
+    }
+    last = html;
+  }
+
+  // Clean up any remaining tags
+  parseEndTag();
+
+  function parseStartTag( tag, tagName, rest, unary ) {
+    tagName = lowercase(tagName);
+    if ( blockElements[ tagName ] ) {
+      while ( stack.last() && inlineElements[ stack.last() ] ) {
+        parseEndTag( "", stack.last() );
+      }
+    }
+
+    if ( closeSelfElements[ tagName ] && stack.last() == tagName ) {
+      parseEndTag( "", tagName );
+    }
+
+    unary = emptyElements[ tagName ] || !!unary;
+
+    if ( !unary )
+      stack.push( tagName );
+
+    if ( handler.start ) {
+      var attrs = {};
+
+      rest.replace(ATTR_REGEXP, function(match, name) {
+        var value = arguments[2] ? arguments[2] :
+          arguments[3] ? arguments[3] :
+          arguments[4] ? arguments[4] :
+          fillAttrs[name] ? name : "";
+
+        attrs[name] = value; //value.replace(/(^|[^\\])"/g, '$1\\\"') //"
+      });
+
+      if ( handler.start )
+        handler.start( tagName, attrs, unary );
+    }
+  }
+
+  function parseEndTag( tag, tagName ) {
+    var pos = 0, i;
+    tagName = lowercase(tagName);
+    if ( tagName )
+      // Find the closest opened tag of the same type
+      for ( pos = stack.length - 1; pos >= 0; pos-- )
+        if ( stack[ pos ] == tagName )
+          break;
+
+    if ( pos >= 0 ) {
+      // Close all the open elements, up the stack
+      for ( i = stack.length - 1; i >= pos; i-- )
+        if ( handler.end )
+          handler.end( stack[ i ] );
+
+      // Remove the open elements from the stack
+      stack.length = pos;
+    }
+  }
+};
+
+/**
+ * @param str 'key1,key2,...'
+ * @returns {object} in the form of {key1:true, key2:true, ...}
+ */
+function makeMap(str){
+  var obj = {}, items = str.split(","), i;
+  for ( i = 0; i < items.length; i++ )
+    obj[ items[i] ] = true;
+  return obj;
+}
+
+/*
+ * For attack vectors see: http://ha.ckers.org/xss.html
+ */
+var JAVASCRIPT_URL = /^javascript:/i,
+    NBSP_REGEXP = /&nbsp;/gim,
+    HEX_ENTITY_REGEXP = /&#x([\da-f]*);?/igm,
+    DEC_ENTITY_REGEXP = /&#(\d+);?/igm,
+    CHAR_REGEXP = /[\w:]/gm,
+    HEX_DECODE = function(match, code){return fromCharCode(parseInt(code,16));},
+    DEC_DECODE = function(match, code){return fromCharCode(code);};
+/**
+ * @param {string} url
+ * @returns true if url decodes to something which starts with 'javascript:' hence unsafe
+ */
+function isJavaScriptUrl(url) {
+  var chars = [];
+  url.replace(NBSP_REGEXP, '').
+      replace(HEX_ENTITY_REGEXP, HEX_DECODE).
+      replace(DEC_ENTITY_REGEXP, DEC_DECODE).
+      // Remove all non \w: characters, unfurtunetly value.replace(/[\w:]/,'') can be defeated using \u0000
+      replace(CHAR_REGEXP, function(ch){chars.push(ch);});
+  return JAVASCRIPT_URL.test(lowercase(chars.join('')));
+}
+
+/**
+ * create an HTML/XML writer which writes to buffer
+ * @param {Array} buf use buf.jain('') to get out sanitized html string
+ * @returns {object} in the form of {
+ *     start: function(tag, attrs, unary) {},
+ *     end: function(tag) {},
+ *     chars: function(text) {},
+ *     comment: function(text) {}
+ * }
+ */
+function htmlSanitizeWriter(buf){
+  var ignore = false;
+  var out = bind(buf, buf.push);
+  return {
+    start: function(tag, attrs, unary){
+      tag = lowercase(tag);
+      if (!ignore && specialElements[tag]) {
+        ignore = tag;
+      }
+      if (!ignore && validElements[tag]) {
+        out('<');
+        out(tag);
+        foreach(attrs, function(value, key){
+          if (validAttrs[lowercase(key)] && !isJavaScriptUrl(value)) {
+            out(' ');
+            out(key);
+            out('="');
+            out(value.
+                replace(/</g, '&lt;').
+                replace(/>/g, '&gt;').
+                replace(/\"/g,'&quot;'));
+            out('"');
+          }
+        });
+        out(unary ? '/>' : '>');
+      }
+    },
+    end: function(tag){
+        tag = lowercase(tag);
+        if (!ignore && validElements[tag]) {
+          out('</');
+          out(tag);
+          out('>');
+        }
+        if (tag == ignore) {
+          ignore = false;
+        }
+      },
+    chars: function(chars){
+        if (!ignore) {
+          out(chars.
+              replace(/&(\w+[&;\W])?/g, function(match, entity){return entity?match:'&amp;';}).
+              replace(/</g, '&lt;').
+              replace(/>/g, '&gt;'));
+        }
+      }
+  };
+}
 //////////////////////////////////
 //JQLite
 //////////////////////////////////
@@ -8794,6 +9098,12 @@ var angularString = {
     }
     return chars.join('');
   },
+
+  /**
+   * Tries to convert input to date and if successful returns the date, otherwise returns the input.
+   * @param {string} string
+   * @return {(Date|string)}
+   */
   'toDate':function(string){
     var match;
     if (typeof string == 'string' &&
@@ -8893,7 +9203,7 @@ function padNumber(num, digits, trim) {
 }
 function dateGetter(name, size, offset, trim) {
   return function(date) {
-    var value = date['get' + name].call(date);
+    var value = date['get' + name]();
     if (offset > 0 || value > -offset)
       value += offset;
     if (value === 0 && offset == -12 ) value = 12;
@@ -8922,9 +9232,19 @@ var DATE_FORMATS = {
         }
 };
 var DATE_FORMATS_SPLIT = /([^yMdHhmsaZ]*)(y+|M+|d+|H+|h+|m+|s+|a|Z)(.*)/;
+var NUMBER_STRING = /^\d+$/;
 
 angularFilter.date = function(date, format) {
-  if (!(date instanceof Date)) return date;
+  if (isString(date) && NUMBER_STRING.test(date)) {
+    date = parseInt(date, 10);
+  }
+
+  if (isNumber(date)) {
+    date = new Date(date);
+  } else if (!(date instanceof Date)) {
+    return date;
+  }
+
   var text = date.toLocaleDateString(), fn;
   if (format && isString(format)) {
     text = '';
@@ -8950,8 +9270,12 @@ angularFilter.lowercase = lowercase;
 
 angularFilter.uppercase = uppercase;
 
-angularFilter.html =  function(html){
-  return new HTML(html);
+/**</>
+ * @exportedAs filter:html
+ * @param {string=} option if 'unsafe' then do not sanitize the HTML input
+ */
+angularFilter.html =  function(html, option){
+  return new HTML(html, option);
 };
 
 angularFilter.linky = function(text){
@@ -8963,16 +9287,19 @@ angularFilter.linky = function(text){
   var match;
   var raw = text;
   var html = [];
+  var writer = htmlSanitizeWriter(html);
+  var url;
+  var i;
   while (match=raw.match(URL)) {
-    var url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
-    var i = raw.indexOf(url);
-    html.push(escapeHtml(raw.substr(0, i)));
-    html.push('<a href="' + url + '">');
-    html.push(url);
-    html.push('</a>');
+    url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
+    i = raw.indexOf(url);
+    writer.chars(raw.substr(0, i));
+    writer.start('a', {href:url});
+    writer.chars(url);
+    writer.end('a');
     raw = raw.substring(i + url.length);
   }
-  html.push(escapeHtml(raw));
+  writer.chars(raw);
   return new HTML(html.join(''));
 };
 function formatter(format, parse) {return {'format':format, 'parse':parse || format};}
@@ -9786,7 +10113,7 @@ angularServiceInject('$cookieStore', function($store) {
     }
   };
 
-}, ['$cookies'], EAGER_PUBLISHED);
+}, ['$cookies']);
 angularDirective("ng:init", function(expression){
   return function(element){
     this.$tryEval(expression, element);
@@ -9815,15 +10142,19 @@ angularDirective("ng:bind", function(expression){
   return function(element) {
     var lastValue = noop, lastError = noop;
     this.$onEval(function() {
-      var error, value, isHtml, isDomElement,
+      var error, value, html, isHtml, isDomElement,
           oldElement = this.hasOwnProperty($$element) ? this.$element : _undefined;
       this.$element = element;
       value = this.$tryEval(expression, function(e){
         error = toJson(e);
       });
       this.$element = oldElement;
+      // If we are HTML than save the raw HTML data so that we don't
+      // recompute sanitization since it is expensive.
+      // TODO: turn this into a more generic way to compute this
+      if (isHtml = (value instanceof HTML))
+        value = (html = value).html;
       if (lastValue === value && lastError == error) return;
-      isHtml = value instanceof HTML;
       isDomElement = isElement(value);
       if (!isHtml && !isDomElement && isObject(value)) {
         value = toJson(value);
@@ -9834,7 +10165,7 @@ angularDirective("ng:bind", function(expression){
         elementError(element, NG_EXCEPTION, error);
         if (error) value = error;
         if (isHtml) {
-          element.html(value.html);
+          element.html(html.get());
         } else if (isDomElement) {
           element.html('');
           element.append(value);
@@ -9994,7 +10325,7 @@ angularWidget("@ng:repeat", function(expression, element){
  *
  * Events that are handled via these handler are always configured not to propagate further.
  *
- * TODO: maybe we should consider allowing users to control even propagation in the future.
+ * TODO: maybe we should consider allowing users to control event propagation in the future.
  */
 angularDirective("ng:click", function(expression, element){
   return function(element){
@@ -10006,6 +10337,25 @@ angularDirective("ng:click", function(expression, element){
     });
   };
 });
+
+
+/**
+ * Enables binding angular expressions to onsubmit events.
+ *
+ * Additionally it prevents the default action (which for form means sending the request to the
+ * server and reloading the current page).
+ */
+angularDirective("ng:submit", function(expression, element) {
+  return function(element) {
+    var self = this;
+    element.bind('submit', function(event) {
+      self.$tryEval(expression, element);
+      self.$root.$eval();
+      event.preventDefault();
+    });
+  };
+});
+
 
 angularDirective("ng:watch", function(expression, element){
   return function(element){
@@ -10363,10 +10713,6 @@ function inputWidget(events, modelAccessor, viewAccessor, initFn) {
         lastValue = model.get();
         scope.$tryEval(action, element);
         scope.$root.$eval();
-        // if we have noop initFn than we are just a button,
-        // therefore we want to prevent default action
-        if(initFn == noop)
-          event.preventDefault();
       });
     }
     function updateView(){
@@ -10416,11 +10762,19 @@ angularWidget('ng:include', function(element){
     return extend(function(xhr, element){
       var scope = this, childScope;
       var changeCounter = 0;
+      var preventRecursion = false;
       function incrementChange(){ changeCounter++;}
       this.$watch(srcExp, incrementChange);
       this.$watch(scopeExp, incrementChange);
       scope.$onEval(function(){
-        if (childScope) childScope.$eval();
+        if (childScope && !preventRecursion) {
+          preventRecursion = true;
+          try {
+            childScope.$eval();
+          } finally {
+            preventRecursion = false;
+          }
+        }
       });
       this.$watch(function(){return changeCounter;}, function(){
         var src = this.$eval(srcExp),
@@ -10566,8 +10920,15 @@ extend(angular, {
 // Public namespace
 angular.scenario = angular.scenario || {};
 
-// Namespace for the UI
-angular.scenario.ui = angular.scenario.ui || {};
+/**
+ * Defines a new output format.
+ *
+ * @param {string} name the name of the new output format
+ * @param {Function} fn function(context, runner) that generates the output
+ */
+angular.scenario.output = angular.scenario.output || function(name, fn) {
+  angular.scenario.output[name] = fn;
+};
 
 /**
  * Defines a new DSL statement. If your factory function returns a Future
@@ -10578,8 +10939,8 @@ angular.scenario.ui = angular.scenario.ui || {};
  *   set on "this" in your statement function are available in the chained
  *   functions.
  *
- * @param {String} The name of the statement
- * @param {Function} Factory function(application), return a function for
+ * @param {string} name The name of the statement
+ * @param {Function} fn Factory function(), return a function for
  *  the statement.
  */
 angular.scenario.dsl = angular.scenario.dsl || function(name, fn) {
@@ -10614,8 +10975,8 @@ angular.scenario.dsl = angular.scenario.dsl || function(name, fn) {
  * against. Your function should return a boolean. The future is automatically
  * created for you.
  *
- * @param {String} The name of the matcher
- * @param {Function} The matching function(expected).
+ * @param {string} name The name of the matcher
+ * @param {Function} fn The matching function(expected).
  */
 angular.scenario.matcher = angular.scenario.matcher || function(name, fn) {
   angular.scenario.matcher[name] = function(expected) {
@@ -10624,7 +10985,7 @@ angular.scenario.matcher = angular.scenario.matcher || function(name, fn) {
       prefix += 'not ';
     }
     var self = this;
-    this.addFuture(prefix + name + ' ' + angular.toJson(expected), 
+    this.addFuture(prefix + name + ' ' + angular.toJson(expected),
       function(done) {
         var error;
         self.actual = self.future.value;
@@ -10639,13 +11000,55 @@ angular.scenario.matcher = angular.scenario.matcher || function(name, fn) {
 };
 
 /**
+ * Initialization function for the scenario runner.
+ *
+ * @param {angular.scenario.Runner} $scenario The runner to setup
+ * @param {Object} config Config options
+ */
+function angularScenarioInit($scenario, config) {
+  var body = _jQuery(document.body);
+  var output = [];
+
+  if (config.scenario_output) {
+    output = config.scenario_output.split(',');
+  }
+
+  angular.foreach(angular.scenario.output, function(fn, name) {
+    if (!output.length || indexOf(output,name) != -1) {
+      var context = body.append('<div></div>').find('div:last');
+      context.attr('id', name);
+      fn.call({}, context, $scenario);
+    }
+  });
+
+  var appFrame = body.append('<div id="application"></div>').find('#application');
+  var application = new angular.scenario.Application(appFrame);
+
+  $scenario.on('RunnerEnd', function() {
+    appFrame.css('display', 'none');
+    appFrame.find('iframe').attr('src', 'about:blank');
+  });
+
+  $scenario.on('RunnerError', function(error) {
+    if (window.console) {
+      console.log(formatException(error));
+    } else {
+      // Do something for IE
+      alert(error);
+    }
+  });
+
+  $scenario.run(application);
+}
+
+/**
  * Iterates through list with iterator function that must call the
  * continueFunction to continute iterating.
  *
- * @param {Array} list to iterate over
- * @param {Function} Callback function(value, continueFunction)
- * @param {Function} Callback function(error, result) called when iteration
- *   finishes or an error occurs.
+ * @param {Array} list list to iterate over
+ * @param {Function} iterator Callback function(value, continueFunction)
+ * @param {Function} done Callback function(error, result) called when 
+ *   iteration finishes or an error occurs.
  */
 function asyncForEach(list, iterator, done) {
   var i = 0;
@@ -10670,8 +11073,8 @@ function asyncForEach(list, iterator, done) {
  * Formats an exception into a string with the stack trace, but limits
  * to a specific line length.
  *
- * @param {Object} the exception to format, can be anything throwable
- * @param {Number} Optional. max lines of the stack trace to include
+ * @param {Object} error The exception to format, can be anything throwable
+ * @param {Number} maxStackLines Optional. max lines of the stack trace to include
  *  default is 5.
  */
 function formatException(error, maxStackLines) {
@@ -10689,18 +11092,20 @@ function formatException(error, maxStackLines) {
 }
 
 /**
- * Returns a function that gets the file name and line number from a 
+ * Returns a function that gets the file name and line number from a
  * location in the stack if available based on the call site.
  *
  * Note: this returns another function because accessing .stack is very
  * expensive in Chrome.
+ *
+ * @param {Number} offset Number of stack lines to skip
  */
 function callerFile(offset) {
   var error = new Error();
-  
+
   return function() {
     var line = (error.stack || '').split('\n')[offset];
-  
+
     // Clean up the stack trace line
     if (line) {
       if (line.indexOf('@') !== -1) {
@@ -10711,7 +11116,7 @@ function callerFile(offset) {
         line = line.substring(line.indexOf('(')+1).replace(')', '');
       }
     }
-    
+
     return line || '';
   };
 }
@@ -10721,7 +11126,7 @@ function callerFile(offset) {
  * not specified.
  *
  * @param {Object} Either a wrapped jQuery/jqLite node or a DOMElement
- * @param {String} Optional event type.
+ * @param {string} Optional event type.
  */
 function browserTrigger(element, type) {
   if (element && !element.nodeName) element = element[0];
@@ -10748,7 +11153,22 @@ function browserTrigger(element, type) {
     type = 'change';
   }
   if (msie) {
+    switch(element.type) {
+      case 'radio':
+      case 'checkbox':
+        element.checked = !element.checked;
+        break;
+    }
     element.fireEvent('on' + type);
+    if (lowercase(element.type) == 'submit') {
+      while(element) {
+        if (lowercase(element.nodeName) == 'form') {
+          element.fireEvent('onsubmit');
+          break;
+        }
+        element = element.parentNode;
+      }
+    }
   } else {
     var evnt = document.createEvent('MouseEvents');
     evnt.initMouseEvent(type, true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, element);
@@ -10760,72 +11180,116 @@ function browserTrigger(element, type) {
  * Don't use the jQuery trigger method since it works incorrectly.
  *
  * jQuery notifies listeners and then changes the state of a checkbox and
- * does not create a real browser event. A real click changes the state of 
+ * does not create a real browser event. A real click changes the state of
  * the checkbox and then notifies listeners.
- * 
+ *
  * To work around this we instead use our own handler that fires a real event.
  */
-_jQuery.fn.trigger = function(type) {
-  return this.each(function(index, node) {
-    browserTrigger(node, type);
-  });
-};
+(function(fn){
+  var parentTrigger = fn.trigger;
+  fn.trigger = function(type) {
+    if (/(click|change|keyup)/.test(type)) {
+      return this.each(function(index, node) {
+        browserTrigger(node, type);
+      });
+    }
+    return parentTrigger.apply(this, arguments);
+  };
+})(_jQuery.fn);
+
 /**
  * Represents the application currently being tested and abstracts usage
  * of iframes or separate windows.
+ *
+ * @param {Object} context jQuery wrapper around HTML context.
  */
 angular.scenario.Application = function(context) {
   this.context = context;
-  context.append('<h2>Current URL: <a href="about:blank">None</a></h2>');
+  context.append(
+    '<h2>Current URL: <a href="about:blank">None</a></h2>' +
+    '<div id="test-frames"></div>'
+  );
 };
 
 /**
  * Gets the jQuery collection of frames. Don't use this directly because
  * frames may go stale.
  *
+ * @private
  * @return {Object} jQuery collection
  */
-angular.scenario.Application.prototype.getFrame = function() {
-  return this.context.find('> iframe');
+angular.scenario.Application.prototype.getFrame_ = function() {
+  return this.context.find('#test-frames iframe:last');
 };
 
 /**
- * Gets the window of the test runner frame. Always favor executeAction() 
+ * Gets the window of the test runner frame. Always favor executeAction()
  * instead of this method since it prevents you from getting a stale window.
  *
+ * @private
  * @return {Object} the window of the frame
  */
-angular.scenario.Application.prototype.getWindow = function() {
-  var contentWindow = this.getFrame().attr('contentWindow');
+angular.scenario.Application.prototype.getWindow_ = function() {
+  var contentWindow = this.getFrame_().attr('contentWindow');
   if (!contentWindow)
-    throw 'No window available because frame not loaded.';
+    throw 'Frame window is not accessible.';
   return contentWindow;
 };
 
 /**
  * Changes the location of the frame.
+ *
+ * @param {string} url The URL. If it begins with a # then only the 
+ *   hash of the page is changed.
+ * @param {Function} onloadFn function($window, $document)
  */
 angular.scenario.Application.prototype.navigateTo = function(url, onloadFn) {
-  this.getFrame().remove();
-  this.context.append('<iframe src=""></iframe>');
+  var self = this;
+  var frame = this.getFrame_();
+  if (url.charAt(0) === '#') {
+    url = frame.attr('src').split('#')[0] + url;
+    frame.attr('src', url);
+    this.executeAction(onloadFn);
+  } else {
+    frame.css('display', 'none').attr('src', 'about:blank');
+    this.context.find('#test-frames').append('<iframe>');
+    frame = this.getFrame_();
+    frame.load(function() {
+      self.executeAction(onloadFn);
+      frame.unbind();
+    }).attr('src', url);
+  }
   this.context.find('> h2 a').attr('href', url).text(url);
-  this.getFrame().attr('src', url).load(onloadFn);
 };
 
 /**
- * Executes a function in the context of the tested application.
+ * Executes a function in the context of the tested application. Will wait
+ * for all pending angular xhr requests before executing.
  *
- * @param {Function} The callback to execute. function($window, $document)
+ * @param {Function} action The callback to execute. function($window, $document)
+ *  $document is a jQuery wrapped document.
  */
 angular.scenario.Application.prototype.executeAction = function(action) {
-  var $window = this.getWindow();
-  return action.call(this, $window, _jQuery($window.document));
+  var self = this;
+  var $window = this.getWindow_();
+  if (!$window.angular) {
+    return action.call(this, $window, _jQuery($window.document));
+  }
+  var $browser = $window.angular.service.$browser();
+  $browser.poll();
+  $browser.notifyWhenNoOutstandingRequests(function() {
+    action.call(self, $window, _jQuery($window.document));
+  });
 };
 /**
  * The representation of define blocks. Don't used directly, instead use
  * define() in your tests.
+ *
+ * @param {string} descName Name of the block
+ * @param {Object} parent describe or undefined if the root.
  */
 angular.scenario.Describe = function(descName, parent) {
+  this.only = parent && parent.only;
   this.beforeEachFns = [];
   this.afterEachFns = [];
   this.its = [];
@@ -10833,7 +11297,7 @@ angular.scenario.Describe = function(descName, parent) {
   this.name = descName;
   this.parent = parent;
   this.id = angular.scenario.Describe.id++;
-  
+
   /**
    * Calls all before functions.
    */
@@ -10859,7 +11323,7 @@ angular.scenario.Describe.id = 0;
 /**
  * Defines a block to execute before each it or nested describe.
  *
- * @param {Function} Body of the block.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.beforeEach = function(body) {
   this.beforeEachFns.push(body);
@@ -10868,7 +11332,7 @@ angular.scenario.Describe.prototype.beforeEach = function(body) {
 /**
  * Defines a block to execute after each it or nested describe.
  *
- * @param {Function} Body of the block.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.afterEach = function(body) {
   this.afterEachFns.push(body);
@@ -10877,11 +11341,24 @@ angular.scenario.Describe.prototype.afterEach = function(body) {
 /**
  * Creates a new describe block that's a child of this one.
  *
- * @param {String} Name of the block. Appended to the parent block's name.
- * @param {Function} Body of the block.
+ * @param {string} name Name of the block. Appended to the parent block's name.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.describe = function(name, body) {
   var child = new angular.scenario.Describe(name, this);
+  this.children.push(child);
+  body.call(child);
+};
+
+/**
+ * Same as describe() but makes ddescribe blocks the only to run.
+ *
+ * @param {string} name Name of the test.
+ * @param {Function} body Body of the block.
+ */
+angular.scenario.Describe.prototype.ddescribe = function(name, body) {
+  var child = new angular.scenario.Describe(name, this);
+  child.only = true;
   this.children.push(child);
   body.call(child);
 };
@@ -10894,18 +11371,29 @@ angular.scenario.Describe.prototype.xdescribe = angular.noop;
 /**
  * Defines a test.
  *
- * @param {String} Name of the test.
- * @param {Function} Body of the block.
+ * @param {string} name Name of the test.
+ * @param {Function} vody Body of the block.
  */
 angular.scenario.Describe.prototype.it = function(name, body) {
-  var self = this;
   this.its.push({
     definition: this,
+    only: this.only,
     name: name,
-    before: self.setupBefore,
+    before: this.setupBefore,
     body: body,
-    after: self.setupAfter
+    after: this.setupAfter
   });
+};
+
+/**
+ * Same as it() but makes iit tests the only test to run.
+ *
+ * @param {string} name Name of the test.
+ * @param {Function} body Body of the block.
+ */
+angular.scenario.Describe.prototype.iit = function(name, body) {
+  this.it.apply(this, arguments);
+  this.its[this.its.length-1].only = true;
 };
 
 /**
@@ -10916,6 +11404,15 @@ angular.scenario.Describe.prototype.xit = angular.noop;
 /**
  * Gets an array of functions representing all the tests (recursively).
  * that can be executed with SpecRunner's.
+ *
+ * @return {Array<Object>} Array of it blocks {
+ *   definition : Object // parent Describe
+ *   only: boolean
+ *   name: string
+ *   before: Function
+ *   body: Function
+ *   after: Function
+ *  }
  */
 angular.scenario.Describe.prototype.getSpecs = function() {
   var specs = arguments[0] || [];
@@ -10925,14 +11422,20 @@ angular.scenario.Describe.prototype.getSpecs = function() {
   angular.foreach(this.its, function(it) {
     specs.push(it);
   });
-  return specs;
+  var only = [];
+  angular.foreach(specs, function(it) {
+    if (it.only) {
+      only.push(it);
+    }
+  });
+  return (only.length && only) || specs;
 };
 /**
  * A future action in a spec.
  *
- * @param {String} name of the future action
+ * @param {string} name of the future action
  * @param {Function} future callback(error, result)
- * @param {String} Optional. function that returns the file/line number.
+ * @param {Function} Optional. function that returns the file/line number.
  */
 angular.scenario.Future = function(name, behavior, line) {
   this.name = name;
@@ -10946,7 +11449,7 @@ angular.scenario.Future = function(name, behavior, line) {
 /**
  * Executes the behavior of the closure.
  *
- * @param {Function} Callback function(error, result)
+ * @param {Function} doneFn Callback function(error, result)
  */
 angular.scenario.Future.prototype.execute = function(doneFn) {
   var self = this;
@@ -10966,6 +11469,8 @@ angular.scenario.Future.prototype.execute = function(doneFn) {
 
 /**
  * Configures the future to convert it's final with a function fn(value)
+ *
+ * @param {Function} fn function(value) that returns the parsed value
  */
 angular.scenario.Future.prototype.parsedWith = function(fn) {
   this.parser = fn;
@@ -10988,254 +11493,167 @@ angular.scenario.Future.prototype.toJson = function() {
   return this.parsedWith(angular.toJson);
 };
 /**
- * User Interface for the Scenario Runner.
+ * Maintains an object tree from the runner events.
  *
- * @param {Object} The jQuery UI object for the UI.
- */
-angular.scenario.ui.Html = function(context) {
-  this.context = context;
-  context.append(
-    '<div id="header">' +
-    '  <h1><span class="angular">&lt;angular/&gt;</span>: Scenario Test Runner</h1>' +
-    '  <ul id="status-legend" class="status-display">' +
-    '    <li class="status-error">0 Errors</li>' +
-    '    <li class="status-failure">0 Failures</li>' +
-    '    <li class="status-success">0 Passed</li>' +
-    '  </ul>' +
-    '</div>' +
-    '<div id="specs">' +
-    '  <div class="test-children"></div>' +
-    '</div>'
-  );
-};
-
-/**
- * The severity order of an error.
- */
-angular.scenario.ui.Html.SEVERITY = ['pending', 'success', 'failure', 'error'];
-
-/**
- * Adds a new spec to the UI.
+ * @param {Object} runner The scenario Runner instance to connect to.
  *
- * @param {Object} The spec object created by the Describe object.
+ * TODO(esprehn): Every output type creates one of these, but we probably
+ *  want one glonal shared instance. Need to handle events better too
+ *  so the HTML output doesn't need to do spec model.getSpec(spec.id)
+ *  silliness.
  */
-angular.scenario.ui.Html.prototype.addSpec = function(spec) {
+angular.scenario.ObjectModel = function(runner) {
   var self = this;
-  var specContext = this.findContext(spec.definition);
-  specContext.find('> .tests').append(
-    '<li class="status-pending test-it"></li>'
-  );
-  specContext = specContext.find('> .tests li:last');
-  return new angular.scenario.ui.Html.Spec(specContext, spec.name, 
-    function(status) {
-      status = self.context.find('#status-legend .status-' + status);
-      var parts = status.text().split(' ');
-      var value = (parts[0] * 1) + 1;
-      status.text(value + ' ' + parts[1]);
+
+  this.specMap = {};
+  this.value = {
+    name: '',
+    children: {}
+  };
+
+  runner.on('SpecBegin', function(spec) {
+    var block = self.value;
+    angular.foreach(self.getDefinitionPath(spec), function(def) {
+      if (!block.children[def.name]) {
+        block.children[def.name] = {
+          id: def.id,
+          name: def.name,
+          children: {},
+          specs: {}
+        };
+      }
+      block = block.children[def.name];
+    });
+    self.specMap[spec.id] = block.specs[spec.name] =
+      new angular.scenario.ObjectModel.Spec(spec.id, spec.name);
+  });
+
+  runner.on('SpecError', function(spec, error) {
+    var it = self.getSpec(spec.id);
+    it.status = 'error';
+    it.error = error;
+  });
+
+  runner.on('SpecEnd', function(spec) {
+    var it = self.getSpec(spec.id);
+    complete(it);
+  });
+
+  runner.on('StepBegin', function(spec, step) {
+    var it = self.getSpec(spec.id);
+    it.steps.push(new angular.scenario.ObjectModel.Step(step.name));
+  });
+
+  runner.on('StepEnd', function(spec, step) {
+    var it = self.getSpec(spec.id);
+    if (it.getLastStep().name !== step.name)
+      throw 'Events fired in the wrong order. Step names don\' match.';
+    complete(it.getLastStep());
+  });
+
+  runner.on('StepFailure', function(spec, step, error) {
+    var it = self.getSpec(spec.id);
+    var item = it.getLastStep();
+    item.error = error;
+    if (!it.status) {
+      it.status = item.status = 'failure';
     }
-  );
+  });
+
+  runner.on('StepError', function(spec, step, error) {
+    var it = self.getSpec(spec.id);
+    var item = it.getLastStep();
+    it.status = 'error';
+    item.status = 'error';
+    item.error = error;
+  });
+
+  function complete(item) {
+    item.endTime = new Date().getTime();
+    item.duration = item.endTime - item.startTime;
+    item.status = item.status || 'success';
+  }
 };
 
 /**
- * Finds the context of a spec block defined by the passed definition.
+ * Computes the path of definition describe blocks that wrap around
+ * this spec.
  *
- * @param {Object} The definition created by the Describe object.
+ * @param spec Spec to compute the path for.
+ * @return {Array<Describe>} The describe block path
  */
-angular.scenario.ui.Html.prototype.findContext = function(definition) {
-  var self = this;
+angular.scenario.ObjectModel.prototype.getDefinitionPath = function(spec) {
   var path = [];
-  var currentContext = this.context.find('#specs');
-  var currentDefinition = definition;
+  var currentDefinition = spec.definition;
   while (currentDefinition && currentDefinition.name) {
     path.unshift(currentDefinition);
     currentDefinition = currentDefinition.parent;
   }
-  angular.foreach(path, function(defn) {
-    var id = 'describe-' + defn.id;
-    if (!self.context.find('#' + id).length) {
-      currentContext.find('> .test-children').append(
-        '<div class="test-describe" id="' + id + '">' +
-        '  <h2></h2>' +
-        '  <div class="test-children"></div>' +
-        '  <ul class="tests"></ul>' +
-        '</div>'
-      );
-      self.context.find('#' + id).find('> h2').text('describe: ' + defn.name);
-    }
-    currentContext = self.context.find('#' + id);
-  });
-  return this.context.find('#describe-' + definition.id);
+  return path;
 };
 
 /**
- * A spec block in the UI.
+ * Gets a spec by id.
  *
- * @param {Object} The jQuery object for the context of the spec.
- * @param {String} The name of the spec.
- * @param {Function} Callback function(status) to call when complete.
+ * @param {string} The id of the spec to get the object for.
+ * @return {Object} the Spec instance
  */
-angular.scenario.ui.Html.Spec = function(context, name, doneFn) {
-  this.status = 'pending';
-  this.context = context;
-  this.startTime = new Date().getTime();
-  this.doneFn = doneFn;
-  context.append(
-    '<div class="test-info">' +
-    '  <p class="test-title">' +
-    '    <span class="timer-result"></span>' +
-    '    <span class="test-name"></span>' +
-    '  </p>' +
-    '</div>' +
-    '<div class="scrollpane">' +
-    '  <ol class="test-actions">' +
-    '  </ol>' +
-    '</div>'
-  );
-  context.find('> .test-info').click(function() {
-    var scrollpane = context.find('> .scrollpane');
-    var actions = scrollpane.find('> .test-actions');
-    var name = context.find('> .test-info .test-name');
-    if (actions.find(':visible').length) {
-      actions.hide();
-      name.removeClass('open').addClass('closed');
-    } else {
-      actions.show();
-      scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
-      name.removeClass('closed').addClass('open');
-    }
-  });
-  context.find('> .test-info .test-name').text('it ' + name);
+angular.scenario.ObjectModel.prototype.getSpec = function(id) {
+  return this.specMap[id];
 };
 
 /**
- * Adds a new Step to this spec and returns it.
+ * A single it block.
  *
- * @param {String} The name of the step.
- * @param {Function} function() that returns a string with the file/line number
- *  where the step was added from.
+ * @param {string} id Id of the spec
+ * @param {string} name Name of the spec
  */
-angular.scenario.ui.Html.Spec.prototype.addStep = function(name, location) {
-  this.context.find('> .scrollpane .test-actions').append('<li class="status-pending"></li>');
-  var stepContext = this.context.find('> .scrollpane .test-actions li:last');
-  var self = this;
-  return new angular.scenario.ui.Html.Step(stepContext, name, location, function(status) {
-    if (indexOf(angular.scenario.ui.Html.SEVERITY, status) >
-      indexOf(angular.scenario.ui.Html.SEVERITY, self.status)) {
-      self.status = status;
-    }
-    var scrollpane = self.context.find('> .scrollpane');
-    scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
-  });
-};
-
-/**
- * Completes the spec and sets the timer value.
- */
-angular.scenario.ui.Html.Spec.prototype.complete = function() {
-  this.context.removeClass('status-pending');
-  var endTime = new Date().getTime();
-  this.context.find("> .test-info .timer-result").
-    text((endTime - this.startTime) + "ms");
-  if (this.status === 'success') {
-    this.context.find('> .test-info .test-name').addClass('closed');
-    this.context.find('> .scrollpane .test-actions').hide();
-  }
-};
-
-/**
- * Finishes the spec, possibly with an error.
- *
- * @param {Object} An optional error
- */
-angular.scenario.ui.Html.Spec.prototype.finish = function() {
-  this.complete();
-  this.context.addClass('status-' + this.status);
-  this.doneFn(this.status);
-};
-
-/**
- * Finishes the spec, but with a Fatal Error.
- *
- * @param {Object} Required error
- */
-angular.scenario.ui.Html.Spec.prototype.error = function(error) {
-  this.status = 'error';
-  this.context.append('<pre></pre>');
-  this.context.find('> pre').text(formatException(error));
-  this.finish();
-};
-
-/**
- * A single step inside an it block (or a before/after function).
- *
- * @param {Object} The jQuery object for the context of the step.
- * @param {String} The name of the step.
- * @param {Function} function() that returns file/line number of step.
- * @param {Function} Callback function(status) to call when complete.
- */
-angular.scenario.ui.Html.Step = function(context, name, location, doneFn) {
-  this.context = context;
+angular.scenario.ObjectModel.Spec = function(id, name) {
+  this.id = id;
   this.name = name;
-  this.location = location;
   this.startTime = new Date().getTime();
-  this.doneFn = doneFn;
-  context.append(
-    '<div class="timer-result"></div>' +
-    '<div class="test-title"></div>'
-  );
-  context.find('> .test-title').text(name);
-  var scrollpane = context.parents('.scrollpane');
-  scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
+  this.steps = [];
 };
 
 /**
- * Completes the step and sets the timer value.
- */
-angular.scenario.ui.Html.Step.prototype.complete = function(error) {
-  this.context.removeClass('status-pending');
-  var endTime = new Date().getTime();
-  this.context.find(".timer-result").
-    text((endTime - this.startTime) + "ms");
-  if (error) {
-    if (!this.context.find('.test-title pre').length) {
-      this.context.find('.test-title').append('<pre></pre>');
-    }
-    var message = _jQuery.trim(this.location() + '\n\n' + formatException(error));
-    this.context.find('.test-title pre').text(message);
-  }
-};
-
-/**
- * Finishes the step, possibly with an error.
+ * Adds a new step to the Spec.
  *
- * @param {Object} An optional error
+ * @param {string} step Name of the step (really name of the future)
+ * @return {Object} the added step
  */
-angular.scenario.ui.Html.Step.prototype.finish = function(error) {
-  this.complete(error);
-  if (error) {
-    this.context.addClass('status-failure');
-    this.doneFn('failure');
-  } else {
-    this.context.addClass('status-success');
-    this.doneFn('success');
-  }
+angular.scenario.ObjectModel.Spec.prototype.addStep = function(name) {
+  var step = new angular.scenario.ObjectModel.Step(name);
+  this.steps.push(step);
+  return step;
 };
 
 /**
- * Finishes the step, but with a Fatal Error.
+ * Gets the most recent step.
  *
- * @param {Object} Required error
+ * @return {Object} the step
  */
-angular.scenario.ui.Html.Step.prototype.error = function(error) {
-  this.complete(error);
-  this.context.addClass('status-error');
-  this.doneFn('error');
+angular.scenario.ObjectModel.Spec.prototype.getLastStep = function() {
+  return this.steps[this.steps.length-1];
+};
+
+/**
+ * A single step inside a Spec.
+ *
+ * @param {string} step Name of the step
+ */
+angular.scenario.ObjectModel.Step = function(name) {
+  this.name = name;
+  this.startTime = new Date().getTime();
 };
 /**
  * The representation of define blocks. Don't used directly, instead use
  * define() in your tests.
+ *
+ * @param {string} descName Name of the block
+ * @param {Object} parent describe or undefined if the root.
  */
 angular.scenario.Describe = function(descName, parent) {
+  this.only = parent && parent.only;
   this.beforeEachFns = [];
   this.afterEachFns = [];
   this.its = [];
@@ -11243,7 +11661,7 @@ angular.scenario.Describe = function(descName, parent) {
   this.name = descName;
   this.parent = parent;
   this.id = angular.scenario.Describe.id++;
-  
+
   /**
    * Calls all before functions.
    */
@@ -11269,7 +11687,7 @@ angular.scenario.Describe.id = 0;
 /**
  * Defines a block to execute before each it or nested describe.
  *
- * @param {Function} Body of the block.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.beforeEach = function(body) {
   this.beforeEachFns.push(body);
@@ -11278,7 +11696,7 @@ angular.scenario.Describe.prototype.beforeEach = function(body) {
 /**
  * Defines a block to execute after each it or nested describe.
  *
- * @param {Function} Body of the block.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.afterEach = function(body) {
   this.afterEachFns.push(body);
@@ -11287,11 +11705,24 @@ angular.scenario.Describe.prototype.afterEach = function(body) {
 /**
  * Creates a new describe block that's a child of this one.
  *
- * @param {String} Name of the block. Appended to the parent block's name.
- * @param {Function} Body of the block.
+ * @param {string} name Name of the block. Appended to the parent block's name.
+ * @param {Function} body Body of the block.
  */
 angular.scenario.Describe.prototype.describe = function(name, body) {
   var child = new angular.scenario.Describe(name, this);
+  this.children.push(child);
+  body.call(child);
+};
+
+/**
+ * Same as describe() but makes ddescribe blocks the only to run.
+ *
+ * @param {string} name Name of the test.
+ * @param {Function} body Body of the block.
+ */
+angular.scenario.Describe.prototype.ddescribe = function(name, body) {
+  var child = new angular.scenario.Describe(name, this);
+  child.only = true;
   this.children.push(child);
   body.call(child);
 };
@@ -11304,18 +11735,29 @@ angular.scenario.Describe.prototype.xdescribe = angular.noop;
 /**
  * Defines a test.
  *
- * @param {String} Name of the test.
- * @param {Function} Body of the block.
+ * @param {string} name Name of the test.
+ * @param {Function} vody Body of the block.
  */
 angular.scenario.Describe.prototype.it = function(name, body) {
-  var self = this;
   this.its.push({
     definition: this,
+    only: this.only,
     name: name,
-    before: self.setupBefore,
+    before: this.setupBefore,
     body: body,
-    after: self.setupAfter
+    after: this.setupAfter
   });
+};
+
+/**
+ * Same as it() but makes iit tests the only test to run.
+ *
+ * @param {string} name Name of the test.
+ * @param {Function} body Body of the block.
+ */
+angular.scenario.Describe.prototype.iit = function(name, body) {
+  this.it.apply(this, arguments);
+  this.its[this.its.length-1].only = true;
 };
 
 /**
@@ -11326,6 +11768,15 @@ angular.scenario.Describe.prototype.xit = angular.noop;
 /**
  * Gets an array of functions representing all the tests (recursively).
  * that can be executed with SpecRunner's.
+ *
+ * @return {Array<Object>} Array of it blocks {
+ *   definition : Object // parent Describe
+ *   only: boolean
+ *   name: string
+ *   before: Function
+ *   body: Function
+ *   after: Function
+ *  }
  */
 angular.scenario.Describe.prototype.getSpecs = function() {
   var specs = arguments[0] || [];
@@ -11335,19 +11786,28 @@ angular.scenario.Describe.prototype.getSpecs = function() {
   angular.foreach(this.its, function(it) {
     specs.push(it);
   });
-  return specs;
+  var only = [];
+  angular.foreach(specs, function(it) {
+    if (it.only) {
+      only.push(it);
+    }
+  });
+  return (only.length && only) || specs;
 };
 /**
  * Runner for scenarios.
  */
 angular.scenario.Runner = function($window) {
+  this.listeners = [];
   this.$window = $window;
   this.rootDescribe = new angular.scenario.Describe();
   this.currentDescribe = this.rootDescribe;
   this.api = {
     it: this.it,
+    iit: this.iit,
     xit: angular.noop,
     describe: this.describe,
+    ddescribe: this.ddescribe,
     xdescribe: angular.noop,
     beforeEach: this.beforeEach,
     afterEach: this.afterEach
@@ -11358,10 +11818,41 @@ angular.scenario.Runner = function($window) {
 };
 
 /**
+ * Emits an event which notifies listeners and passes extra
+ * arguments.
+ *
+ * @param {string} eventName Name of the event to fire.
+ */
+angular.scenario.Runner.prototype.emit = function(eventName) {
+  var self = this;
+  var args = Array.prototype.slice.call(arguments, 1);
+  eventName = eventName.toLowerCase();
+  if (!this.listeners[eventName])
+    return;
+  angular.foreach(this.listeners[eventName], function(listener) {
+    listener.apply(self, args);
+  });
+};
+
+/**
+ * Adds a listener for an event.
+ *
+ * @param {string} eventName The name of the event to add a handler for
+ * @param {string} listener The fn(...) that takes the extra arguments from emit()
+ */
+angular.scenario.Runner.prototype.on = function(eventName, listener) {
+  eventName = eventName.toLowerCase();
+  this.listeners[eventName] = this.listeners[eventName] || [];
+  this.listeners[eventName].push(listener);
+};
+
+/**
  * Defines a describe block of a spec.
  *
- * @param {String} Name of the block
- * @param {Function} Body of the block
+ * @see Describe.js
+ *
+ * @param {string} name Name of the block
+ * @param {Function} body Body of the block
  */
 angular.scenario.Runner.prototype.describe = function(name, body) {
   var self = this;
@@ -11377,18 +11868,55 @@ angular.scenario.Runner.prototype.describe = function(name, body) {
 };
 
 /**
+ * Same as describe, but makes ddescribe the only blocks to run.
+ *
+ * @see Describe.js
+ *
+ * @param {string} name Name of the block
+ * @param {Function} body Body of the block
+ */
+angular.scenario.Runner.prototype.ddescribe = function(name, body) {
+  var self = this;
+  this.currentDescribe.ddescribe(name, function() {
+    var parentDescribe = self.currentDescribe;
+    self.currentDescribe = this;
+    try {
+      body.call(this);
+    } finally {
+      self.currentDescribe = parentDescribe;
+    }
+  });
+};
+
+/**
  * Defines a test in a describe block of a spec.
  *
- * @param {String} Name of the block
- * @param {Function} Body of the block
+ * @see Describe.js
+ *
+ * @param {string} name Name of the block
+ * @param {Function} body Body of the block
  */
 angular.scenario.Runner.prototype.it = function(name, body) {
   this.currentDescribe.it(name, body);
 };
 
 /**
+ * Same as it, but makes iit tests the only tests to run.
+ *
+ * @see Describe.js
+ *
+ * @param {string} name Name of the block
+ * @param {Function} body Body of the block
+ */
+angular.scenario.Runner.prototype.iit = function(name, body) {
+  this.currentDescribe.iit(name, body);
+};
+
+/**
  * Defines a function to be called before each it block in the describe
  * (and before all nested describes).
+ *
+ * @see Describe.js
  *
  * @param {Function} Callback to execute
  */
@@ -11400,6 +11928,8 @@ angular.scenario.Runner.prototype.beforeEach = function(body) {
  * Defines a function to be called after each it block in the describe
  * (and before all nested describes).
  *
+ * @see Describe.js
+ *
  * @param {Function} Callback to execute
  */
 angular.scenario.Runner.prototype.afterEach = function(body) {
@@ -11407,24 +11937,29 @@ angular.scenario.Runner.prototype.afterEach = function(body) {
 };
 
 /**
- * Defines a function to be called before each it block in the describe
- * (and before all nested describes).
+ * Creates a new spec runner.
  *
- * @param {Function} Callback to execute
+ * @private
+ * @param {Object} scope parent scope
  */
-angular.scenario.Runner.prototype.run = function(ui, application, specRunnerClass, specsDone) {
-  var $root = angular.scope({}, angular.service);
+angular.scenario.Runner.prototype.createSpecRunner_ = function(scope) {
+  return scope.$new(angular.scenario.SpecRunner);
+};
+
+/**
+ * Runs all the loaded tests with the specified runner class on the
+ * provided application.
+ *
+ * @param {angular.scenario.Application} application App to remote control.
+ */
+angular.scenario.Runner.prototype.run = function(application) {
   var self = this;
-  var specs = this.rootDescribe.getSpecs();
+  var $root = angular.scope(this);
   $root.application = application;
-  $root.ui = ui;
-  $root.setTimeout = function() {
-    return self.$window.setTimeout.apply(self.$window, arguments);
-  };
-  asyncForEach(specs, function(spec, specDone) {
+  this.emit('RunnerBegin');
+  asyncForEach(this.rootDescribe.getSpecs(), function(spec, specDone) {
     var dslCache = {};
-    var runner = angular.scope($root);
-    runner.$become(specRunnerClass);
+    var runner = self.createSpecRunner_($root);
     angular.foreach(angular.scenario.dsl, function(fn, key) {
       dslCache[key] = fn.call($root);
     });
@@ -11444,18 +11979,26 @@ angular.scenario.Runner.prototype.run = function(ui, application, specRunnerClas
         // Make these methods work on the current chain
         scope.addFuture = function() {
           Array.prototype.push.call(arguments, line);
-          return specRunnerClass.prototype.addFuture.apply(scope, arguments);
+          return angular.scenario.SpecRunner.
+            prototype.addFuture.apply(scope, arguments);
         };
         scope.addFutureAction = function() {
           Array.prototype.push.call(arguments, line);
-          return specRunnerClass.prototype.addFutureAction.apply(scope, arguments);
+          return angular.scenario.SpecRunner.
+            prototype.addFutureAction.apply(scope, arguments);
         };
 
         return scope.dsl[key].apply(scope, arguments);
       };
     });
-    runner.run(ui, spec, specDone);
-  }, specsDone || angular.noop);
+    runner.run(spec, specDone);
+  },
+  function(error) {
+    if (error) {
+      self.emit('RunnerError', error);
+    }
+    self.emit('RunnerEnd');
+  });
 };
 /**
  * This class is the "this" of the it/beforeEach/afterEach method.
@@ -11474,14 +12017,16 @@ angular.scenario.SpecRunner = function() {
  * Executes a spec which is an it block with associated before/after functions
  * based on the describe nesting.
  *
- * @param {Object} An angular.scenario.UI implementation
- * @param {Object} A spec object
- * @param {Object} An angular.scenario.Application instance
+ * @param {Object} spec A spec object
+ * @param {Object} specDone An angular.scenario.Application instance
  * @param {Function} Callback function that is called when the  spec finshes.
  */
-angular.scenario.SpecRunner.prototype.run = function(ui, spec, specDone) {
+angular.scenario.SpecRunner.prototype.run = function(spec, specDone) {
   var self = this;
-  var specUI = ui.addSpec(spec);
+  var count = 0;
+  this.spec = spec;
+
+  this.emit('SpecBegin', spec);
 
   try {
     spec.before.call(this);
@@ -11489,7 +12034,8 @@ angular.scenario.SpecRunner.prototype.run = function(ui, spec, specDone) {
     this.afterIndex = this.futures.length;
     spec.after.call(this);
   } catch (e) {
-    specUI.error(e);
+    this.emit('SpecError', spec, e);
+    this.emit('SpecEnd', spec);
     specDone();
     return;
   }
@@ -11501,32 +12047,40 @@ angular.scenario.SpecRunner.prototype.run = function(ui, spec, specDone) {
     self.error = true;
     done(null, self.afterIndex);
   };
-  
-  var spec = this;
+
   asyncForEach(
     this.futures,
     function(future, futureDone) {
-      var stepUI = specUI.addStep(future.name, future.line);
+      self.step = future;
+      self.emit('StepBegin', spec, future);
       try {
         future.execute(function(error) {
-          stepUI.finish(error);
           if (error) {
+            self.emit('StepFailure', spec, future, error);
+            self.emit('StepEnd', spec, future);
             return handleError(error, futureDone);
           }
-          spec.$window.setTimeout( function() { futureDone(); }, 0);
+          self.emit('StepEnd', spec, future);
+          if ((count++) % 10 === 0) {
+            self.$window.setTimeout(function() { futureDone(); }, 0);
+          } else {
+            futureDone();
+          }
         });
       } catch (e) {
-        stepUI.error(e);
+        self.emit('StepError', spec, future, e);
+        self.emit('StepEnd', spec, future);
         handleError(e, futureDone);
       }
     },
     function(e) {
       if (e) {
-        specUI.error(e);
-      } else {
-        specUI.finish();
+        self.emit('SpecError', spec, e);
       }
-      specDone();
+      self.emit('SpecEnd', spec);
+      // Call done in a timeout so exceptions don't recursively
+      // call this function
+      self.$window.setTimeout(function() { specDone(); }, 0);
     }
   );
 };
@@ -11536,9 +12090,9 @@ angular.scenario.SpecRunner.prototype.run = function(ui, spec, specDone) {
  *
  * Note: Do not pass line manually. It happens automatically.
  *
- * @param {String} Name of the future
- * @param {Function} Behavior of the future
- * @param {Function} fn() that returns file/line number
+ * @param {string} name Name of the future
+ * @param {Function} behavior Behavior of the future
+ * @param {Function} line fn() that returns file/line number
  */
 angular.scenario.SpecRunner.prototype.addFuture = function(name, behavior, line) {
   var future = new angular.scenario.Future(name, angular.bind(this, behavior), line);
@@ -11551,14 +12105,16 @@ angular.scenario.SpecRunner.prototype.addFuture = function(name, behavior, line)
  *
  * Note: Do not pass line manually. It happens automatically.
  *
- * @param {String} Name of the future
- * @param {Function} Behavior of the future
- * @param {Function} fn() that returns file/line number 
+ * @param {string} name Name of the future
+ * @param {Function} behavior Behavior of the future
+ * @param {Function} line fn() that returns file/line number
  */
 angular.scenario.SpecRunner.prototype.addFutureAction = function(name, behavior, line) {
   var self = this;
   return this.addFuture(name, function(done) {
     this.application.executeAction(function($window, $document) {
+
+      //TODO(esprehn): Refactor this so it doesn't need to be in here.
       $document.elements = function(selector) {
         var args = Array.prototype.slice.call(arguments, 1);
         if (self.selector) {
@@ -11593,18 +12149,19 @@ angular.scenario.SpecRunner.prototype.addFutureAction = function(name, behavior,
 /**
  * Shared DSL statements that are useful to all scenarios.
  */
- 
+
  /**
  * Usage:
  *    wait() waits until you call resume() in the console
  */
- angular.scenario.dsl('wait', function() {
+angular.scenario.dsl('wait', function() {
   return function() {
-    return this.addFuture('waiting for you to call resume() in the console', function(done) {
+    return this.addFuture('waiting for you to resume', function(done) {
+      this.emit('InteractiveWait', this.spec, this.step);
       this.$window.resume = function() { done(); };
     });
   };
- });
+});
 
 /**
 * Usage:
@@ -11613,7 +12170,7 @@ angular.scenario.SpecRunner.prototype.addFutureAction = function(name, behavior,
 angular.scenario.dsl('pause', function() {
  return function(time) {
    return this.addFuture('pause for ' + time + ' seconds', function(done) {
-     this.setTimeout(function() { done(null, time * 1000); }, time * 1000);
+     this.$window.setTimeout(function() { done(null, time * 1000); }, time * 1000);
    });
  };
 });
@@ -11641,8 +12198,8 @@ angular.scenario.dsl('expect', function() {
 
 /**
  * Usage:
- *    navigateTo(future|string) where url a string or future with a value
- *    of a  URL to navigate to
+ *    navigateTo(url) Loads the url into the frame
+ *    navigateTo(url, fn) where fn(url) is called and returns the URL to navigate to
  */
 angular.scenario.dsl('navigateTo', function() {
   return function(url, delegate) {
@@ -11652,17 +12209,7 @@ angular.scenario.dsl('navigateTo', function() {
         url = delegate.call(this, url);
       }
       application.navigateTo(url, function() {
-        application.executeAction(function($window) {
-          if ($window.angular) {
-            var $browser = $window.angular.service.$browser();
-            $browser.poll();
-            $browser.notifyWhenNoOutstandingRequests(function() {
-              done(null, url);
-            });
-          } else {
-            done(null, url);
-          }
-        });
+        done(null, url);
       });
     });
   };
@@ -11754,7 +12301,11 @@ angular.scenario.dsl('repeater', function() {
 
   chain.count = function() {
     return this.addFutureAction('repeater ' + this.selector + ' count', function($window, $document, done) {
-      done(null, $document.elements().size());
+      try {
+        done(null, $document.elements().length);
+      } catch (e) {
+        done(null, 0);
+      }
     });
   };
 
@@ -11830,6 +12381,7 @@ angular.scenario.dsl('select', function() {
 
 /**
  * Usage:
+ *    element(selector).count() get the number of elements that match selector
  *    element(selector).click() clicks an element
  *    element(selector).attr(name) gets the value of an attribute
  *    element(selector).attr(name, value) sets the value of an attribute
@@ -11840,10 +12392,28 @@ angular.scenario.dsl('select', function() {
 angular.scenario.dsl('element', function() {
   var chain = {};
 
+  chain.count = function() {
+    return this.addFutureAction('element ' + this.selector + ' count', function($window, $document, done) {
+      try {
+        done(null, $document.elements().length);
+      } catch (e) {
+        done(null, 0);
+      }
+    });
+  };
+
   chain.click = function() {
     return this.addFutureAction('element ' + this.selector + ' click', function($window, $document, done) {
-      $document.elements().trigger('click');
-      done();
+      var elements = $document.elements();
+      var href = elements.attr('href');
+      elements.trigger('click');
+      if (href && elements[0].nodeName.toUpperCase() === 'A') {
+        this.application.navigateTo(href, function() {
+          done();
+        });
+      } else {
+        done();
+      }
     });
   };
 
@@ -11886,6 +12456,10 @@ angular.scenario.matcher('toEqual', function(expected) {
   return angular.equals(this.actual, expected);
 });
 
+angular.scenario.matcher('toBe', function(expected) {
+  return this.actual === expected;
+});
+
 angular.scenario.matcher('toBeDefined', function() {
   return angular.isDefined(this.actual);
 });
@@ -11917,33 +12491,246 @@ angular.scenario.matcher('toBeLessThan', function(expected) {
 angular.scenario.matcher('toBeGreaterThan', function(expected) {
   return this.actual > expected;
 });
+/**
+ * User Interface for the Scenario Runner.
+ *
+ * TODO(esprehn): This should be refactored now that ObjectModel exists
+ *  to use angular bindings for the UI.
+ */
+angular.scenario.output('html', function(context, runner) {
+  var model = new angular.scenario.ObjectModel(runner);
+
+  context.append(
+    '<div id="header">' +
+    '  <h1><span class="angular">&lt;angular/&gt;</span>: Scenario Test Runner</h1>' +
+    '  <ul id="status-legend" class="status-display">' +
+    '    <li class="status-error">0 Errors</li>' +
+    '    <li class="status-failure">0 Failures</li>' +
+    '    <li class="status-success">0 Passed</li>' +
+    '  </ul>' +
+    '</div>' +
+    '<div id="specs">' +
+    '  <div class="test-children"></div>' +
+    '</div>'
+  );
+
+  runner.on('InteractiveWait', function(spec, step) {
+    var ui = model.getSpec(spec.id).getLastStep().ui;
+    ui.find('.test-title').
+      html('waiting for you to <a href="javascript:resume()">resume</a>.');
+  });
+
+  runner.on('SpecBegin', function(spec) {
+    var ui = findContext(spec);
+    ui.find('> .tests').append(
+      '<li class="status-pending test-it"></li>'
+    );
+    ui = ui.find('> .tests li:last');
+    ui.append(
+      '<div class="test-info">' +
+      '  <p class="test-title">' +
+      '    <span class="timer-result"></span>' +
+      '    <span class="test-name"></span>' +
+      '  </p>' +
+      '</div>' +
+      '<div class="scrollpane">' +
+      '  <ol class="test-actions"></ol>' +
+      '</div>'
+    );
+    ui.find('> .test-info .test-name').text(spec.name);
+    ui.find('> .test-info').click(function() {
+      var scrollpane = ui.find('> .scrollpane');
+      var actions = scrollpane.find('> .test-actions');
+      var name = context.find('> .test-info .test-name');
+      if (actions.find(':visible').length) {
+        actions.hide();
+        name.removeClass('open').addClass('closed');
+      } else {
+        actions.show();
+        scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
+        name.removeClass('closed').addClass('open');
+      }
+    });
+    model.getSpec(spec.id).ui = ui;
+  });
+
+  runner.on('SpecError', function(spec, error) {
+    var ui = model.getSpec(spec.id).ui;
+    ui.append('<pre></pre>');
+    ui.find('> pre').text(formatException(error));
+  });
+
+  runner.on('SpecEnd', function(spec) {
+    spec = model.getSpec(spec.id);
+    spec.ui.removeClass('status-pending');
+    spec.ui.addClass('status-' + spec.status);
+    spec.ui.find("> .test-info .timer-result").text(spec.duration + "ms");
+    if (spec.status === 'success') {
+      spec.ui.find('> .test-info .test-name').addClass('closed');
+      spec.ui.find('> .scrollpane .test-actions').hide();
+    }
+    updateTotals(spec.status);
+  });
+
+  runner.on('StepBegin', function(spec, step) {
+    spec = model.getSpec(spec.id);
+    step = spec.getLastStep();
+    spec.ui.find('> .scrollpane .test-actions').
+      append('<li class="status-pending"></li>');
+    step.ui = spec.ui.find('> .scrollpane .test-actions li:last');
+    step.ui.append(
+      '<div class="timer-result"></div>' +
+      '<div class="test-title"></div>'
+    );
+    step.ui.find('> .test-title').text(step.name);
+    var scrollpane = step.ui.parents('.scrollpane');
+    scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
+  });
+
+  runner.on('StepFailure', function(spec, step, error) {
+    var ui = model.getSpec(spec.id).getLastStep().ui;
+    addError(ui, step.line, error);
+  });
+
+  runner.on('StepError', function(spec, step, error) {
+    var ui = model.getSpec(spec.id).getLastStep().ui;
+    addError(ui, step.line, error);
+  });
+
+  runner.on('StepEnd', function(spec, step) {
+    spec = model.getSpec(spec.id);
+    step = spec.getLastStep();
+    step.ui.find('.timer-result').text(step.duration + 'ms');
+    step.ui.removeClass('status-pending');
+    step.ui.addClass('status-' + step.status);
+    var scrollpane = spec.ui.find('> .scrollpane');
+    scrollpane.attr('scrollTop', scrollpane.attr('scrollHeight'));
+  });
+
+  /**
+   * Finds the context of a spec block defined by the passed definition.
+   *
+   * @param {Object} The definition created by the Describe object.
+   */
+  function findContext(spec) {
+    var currentContext = context.find('#specs');
+    angular.foreach(model.getDefinitionPath(spec), function(defn) {
+      var id = 'describe-' + defn.id;
+      if (!context.find('#' + id).length) {
+        currentContext.find('> .test-children').append(
+          '<div class="test-describe" id="' + id + '">' +
+          '  <h2></h2>' +
+          '  <div class="test-children"></div>' +
+          '  <ul class="tests"></ul>' +
+          '</div>'
+        );
+        context.find('#' + id).find('> h2').text('describe: ' + defn.name);
+      }
+      currentContext = context.find('#' + id);
+    });
+    return context.find('#describe-' + spec.definition.id);
+  };
+
+  /**
+   * Updates the test counter for the status.
+   *
+   * @param {string} the status.
+   */
+  function updateTotals(status) {
+    var legend = context.find('#status-legend .status-' + status);
+    var parts = legend.text().split(' ');
+    var value = (parts[0] * 1) + 1;
+    legend.text(value + ' ' + parts[1]);
+  }
+
+  /**
+   * Add an error to a step.
+   *
+   * @param {Object} The JQuery wrapped context
+   * @param {Function} fn() that should return the file/line number of the error
+   * @param {Object} the error.
+   */
+  function addError(context, line, error) {
+    context.find('.test-title').append('<pre></pre>');
+    var message = _jQuery.trim(line() + '\n\n' + formatException(error));
+    context.find('.test-title pre:last').text(message);
+  };
+});
+/**
+ * Generates JSON output into a context.
+ */
+angular.scenario.output('json', function(context, runner) {
+  var model = new angular.scenario.ObjectModel(runner);
+  
+  runner.on('RunnerEnd', function() {
+    context.text(angular.toJson(model.value));
+  });
+});
+/**
+ * Generates XML output into a context.
+ */
+angular.scenario.output('xml', function(context, runner) {
+  var model = new angular.scenario.ObjectModel(runner);
+  var $ = function(args) {return new context.init(args);};
+  runner.on('RunnerEnd', function() {
+    var scenario = $('<scenario></scenario>');
+    context.append(scenario);
+    serializeXml(scenario, model.value);
+  });
+
+  /**
+   * Convert the tree into XML.
+   *
+   * @param {Object} context jQuery context to add the XML to.
+   * @param {Object} tree node to serialize
+   */
+  function serializeXml(context, tree) {
+     angular.foreach(tree.children, function(child) {
+       var describeContext = $('<describe></describe>');
+       describeContext.attr('id', child.id);
+       describeContext.attr('name', child.name);
+       context.append(describeContext);
+       serializeXml(describeContext, child);
+     });
+     var its = $('<its></its>');
+     context.append(its);
+     angular.foreach(tree.specs, function(spec) {
+       var it = $('<it></it>');
+       it.attr('id', spec.id);
+       it.attr('name', spec.name);
+       it.attr('duration', spec.duration);
+       it.attr('status', spec.status);
+       its.append(it);
+       angular.foreach(spec.steps, function(step) {
+         var stepContext = $('<step></step>');
+         stepContext.attr('name', step.name);
+         stepContext.attr('duration', step.duration);
+         stepContext.attr('status', step.status);
+         it.append(stepContext);
+         if (step.error) {
+           var error = $('<error></error');
+           stepContext.append(error);
+           error.text(formatException(stepContext.error));
+         }
+       });
+     });
+   }
+});
+/**
+ * Creates a global value $result with the result of the runner.
+ */
+angular.scenario.output('object', function(context, runner) {
+  runner.$window.$result = new angular.scenario.ObjectModel(runner).value;
+});
   var $scenario = new angular.scenario.Runner(window);
 
   window.onload = function() {
     try {
       if (previousOnLoad) previousOnLoad();
     } catch(e) {}
-    _jQuery(document.body).append(
-      '<div id="runner"></div>' +
-      '<div id="frame"></div>'
-    );
-    var frame = _jQuery('#frame');
-    var runner = _jQuery('#runner');
-    var application = new angular.scenario.Application(frame);
-    var ui = new angular.scenario.ui.Html(runner);
-    $scenario.run(ui, application, angular.scenario.SpecRunner, function(error) {
-      frame.remove();
-      if (error) {
-        if (window.console) {
-          console.log(error.stack || error);
-        } else {
-          // Do something for IE
-          alert(error);
-        }
-      }
-    });
+    angularScenarioInit($scenario, angularJsConfig(document));
   };
 
 })(window, document, window.onload);
 document.write('<style type="text/css">@charset "UTF-8";\n\n.ng-format-negative {\n  color: red;\n}\n\n.ng-exception {\n  border: 2px solid #FF0000;\n  font-family: "Courier New", Courier, monospace;\n  font-size: smaller;\n}\n\n.ng-validation-error {\n  border: 2px solid #FF0000;\n}\n\n\n/*****************\n * TIP\n *****************/\n#ng-callout {\n  margin: 0;\n  padding: 0;\n  border: 0;\n  outline: 0;\n  font-size: 13px;\n  font-weight: normal;\n  font-family: Verdana, Arial, Helvetica, sans-serif;\n  vertical-align: baseline;\n  background: transparent;\n  text-decoration: none;\n}\n\n#ng-callout .ng-arrow-left{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrSLoc/AG8FeUUIN+sGebWAnbKSJodqqlsOxJtqYooU9vvk+vcJIcTkg+QAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  left:-12px;\n  height:23px;\n  width:10px;\n  top:-3px;\n}\n\n#ng-callout .ng-arrow-right{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrCLTcoM29yN6k9socs91e5X3EyJloipYrO4ohTMqA0Fn2XVNswJe+H+SXAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  height:23px;\n  width:11px;\n    top:-2px;\n}\n\n#ng-callout {\n  position: absolute;\n  z-index:100;\n  border: 2px solid #CCCCCC;\n  background-color: #fff;\n}\n\n#ng-callout .ng-content{\n  padding:10px 10px 10px 10px;\n  color:#333333;\n}\n\n#ng-callout .ng-title{\n  background-color: #CCCCCC;\n  text-align: left;\n  padding-left: 8px;\n  padding-bottom: 5px;\n  padding-top: 2px;\n  font-weight:bold;\n}\n\n\n/*****************\n * indicators\n *****************/\n.ng-input-indicator-wait {\n  background-image: url("data:image/png;base64,R0lGODlhEAAQAPQAAP///wAAAPDw8IqKiuDg4EZGRnp6egAAAFhYWCQkJKysrL6+vhQUFJycnAQEBDY2NmhoaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh/hpDcmVhdGVkIHdpdGggYWpheGxvYWQuaW5mbwAh+QQJCgAAACwAAAAAEAAQAAAFdyAgAgIJIeWoAkRCCMdBkKtIHIngyMKsErPBYbADpkSCwhDmQCBethRB6Vj4kFCkQPG4IlWDgrNRIwnO4UKBXDufzQvDMaoSDBgFb886MiQadgNABAokfCwzBA8LCg0Egl8jAggGAA1kBIA1BAYzlyILczULC2UhACH5BAkKAAAALAAAAAAQABAAAAV2ICACAmlAZTmOREEIyUEQjLKKxPHADhEvqxlgcGgkGI1DYSVAIAWMx+lwSKkICJ0QsHi9RgKBwnVTiRQQgwF4I4UFDQQEwi6/3YSGWRRmjhEETAJfIgMFCnAKM0KDV4EEEAQLiF18TAYNXDaSe3x6mjidN1s3IQAh+QQJCgAAACwAAAAAEAAQAAAFeCAgAgLZDGU5jgRECEUiCI+yioSDwDJyLKsXoHFQxBSHAoAAFBhqtMJg8DgQBgfrEsJAEAg4YhZIEiwgKtHiMBgtpg3wbUZXGO7kOb1MUKRFMysCChAoggJCIg0GC2aNe4gqQldfL4l/Ag1AXySJgn5LcoE3QXI3IQAh+QQJCgAAACwAAAAAEAAQAAAFdiAgAgLZNGU5joQhCEjxIssqEo8bC9BRjy9Ag7GILQ4QEoE0gBAEBcOpcBA0DoxSK/e8LRIHn+i1cK0IyKdg0VAoljYIg+GgnRrwVS/8IAkICyosBIQpBAMoKy9dImxPhS+GKkFrkX+TigtLlIyKXUF+NjagNiEAIfkECQoAAAAsAAAAABAAEAAABWwgIAICaRhlOY4EIgjH8R7LKhKHGwsMvb4AAy3WODBIBBKCsYA9TjuhDNDKEVSERezQEL0WrhXucRUQGuik7bFlngzqVW9LMl9XWvLdjFaJtDFqZ1cEZUB0dUgvL3dgP4WJZn4jkomWNpSTIyEAIfkECQoAAAAsAAAAABAAEAAABX4gIAICuSxlOY6CIgiD8RrEKgqGOwxwUrMlAoSwIzAGpJpgoSDAGifDY5kopBYDlEpAQBwevxfBtRIUGi8xwWkDNBCIwmC9Vq0aiQQDQuK+VgQPDXV9hCJjBwcFYU5pLwwHXQcMKSmNLQcIAExlbH8JBwttaX0ABAcNbWVbKyEAIfkECQoAAAAsAAAAABAAEAAABXkgIAICSRBlOY7CIghN8zbEKsKoIjdFzZaEgUBHKChMJtRwcWpAWoWnifm6ESAMhO8lQK0EEAV3rFopIBCEcGwDKAqPh4HUrY4ICHH1dSoTFgcHUiZjBhAJB2AHDykpKAwHAwdzf19KkASIPl9cDgcnDkdtNwiMJCshACH5BAkKAAAALAAAAAAQABAAAAV3ICACAkkQZTmOAiosiyAoxCq+KPxCNVsSMRgBsiClWrLTSWFoIQZHl6pleBh6suxKMIhlvzbAwkBWfFWrBQTxNLq2RG2yhSUkDs2b63AYDAoJXAcFRwADeAkJDX0AQCsEfAQMDAIPBz0rCgcxky0JRWE1AmwpKyEAIfkECQoAAAAsAAAAABAAEAAABXkgIAICKZzkqJ4nQZxLqZKv4NqNLKK2/Q4Ek4lFXChsg5ypJjs1II3gEDUSRInEGYAw6B6zM4JhrDAtEosVkLUtHA7RHaHAGJQEjsODcEg0FBAFVgkQJQ1pAwcDDw8KcFtSInwJAowCCA6RIwqZAgkPNgVpWndjdyohACH5BAkKAAAALAAAAAAQABAAAAV5ICACAimc5KieLEuUKvm2xAKLqDCfC2GaO9eL0LABWTiBYmA06W6kHgvCqEJiAIJiu3gcvgUsscHUERm+kaCxyxa+zRPk0SgJEgfIvbAdIAQLCAYlCj4DBw0IBQsMCjIqBAcPAooCBg9pKgsJLwUFOhCZKyQDA3YqIQAh+QQJCgAAACwAAAAAEAAQAAAFdSAgAgIpnOSonmxbqiThCrJKEHFbo8JxDDOZYFFb+A41E4H4OhkOipXwBElYITDAckFEOBgMQ3arkMkUBdxIUGZpEb7kaQBRlASPg0FQQHAbEEMGDSVEAA1QBhAED1E0NgwFAooCDWljaQIQCE5qMHcNhCkjIQAh+QQJCgAAACwAAAAAEAAQAAAFeSAgAgIpnOSoLgxxvqgKLEcCC65KEAByKK8cSpA4DAiHQ/DkKhGKh4ZCtCyZGo6F6iYYPAqFgYy02xkSaLEMV34tELyRYNEsCQyHlvWkGCzsPgMCEAY7Cg04Uk48LAsDhRA8MVQPEF0GAgqYYwSRlycNcWskCkApIyEAOwAAAAAAAAAAAA==");\n  background-position: right;\n  background-repeat: no-repeat;\n}\n</style>');
-document.write('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#frame h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#frame,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#frame {\n  margin: 10px;\n}\n\n#frame iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#frame .popout {\n  float: right;\n}\n\n#frame iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#frame h2 {\n  background-color: #efefef;\n}\n\n#frame {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');
+document.write('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#json, #xml {\n  display: none;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#application h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#application,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#application {\n  margin: 10px;\n}\n\n#application iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#application .popout {\n  float: right;\n}\n\n#application iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe {\n  padding-bottom: 0.5em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#application h2 {\n  background-color: #efefef;\n}\n\n#application {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');
