@@ -14,11 +14,12 @@ module Angular
 
     attr_reader :version
 
+    VERSION_PATTERN = /\-?(\d(?:\.\d+){0,2})((:?[\-\w\d]*\.?\d+)*)/
     ROOT_PATH = Pathname.new('vendor/assets/javascripts/angular')
     I18N_PATH = Pathname.new('vendor/assets/javascripts/angular/i18n')
 
-    def self.bump(beta: nil)
-      version = Versionomy.parse(Angular::Rails::VERSION)
+    def self.bump(version: nil, beta: nil)
+      version ||= Versionomy.parse(Angular::Rails::VERSION)
       beta = version.release_type != :final if beta.nil?
 
       list = if beta
@@ -124,9 +125,10 @@ module Angular
       Nokogiri::HTML.parse(open(url)).css('a').tap do |body|
         body.map{|a| a[:href] =~ /[^.]*\.js/ ? a : nil }.compact.each do |a|
           full_url = url + "/" + a[:href]
-          file = a[:href].gsub(/angular/, 'core').
-            gsub(/(?:\-?(\d+)\.)?(?:(\d+)\.)?(\*|\d+)?/, '').
-            gsub(/core-/, '')
+          file = a[:href].
+            gsub(VERSION_PATTERN, '').
+            gsub(/angular/, 'core').
+            gsub(/core[^\.]/, '')
           full_path = ROOT_PATH.join(file)
           download_file(full_path, full_url)
         end
