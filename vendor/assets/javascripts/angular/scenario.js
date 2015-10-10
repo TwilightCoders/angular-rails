@@ -6261,7 +6261,7 @@ window.jQuery = window.$ = jQuery;
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-(function(window, document, previousOnLoad){
+(function(window, document){
   var _jQuery = window.jQuery.noConflict(true);
 ////////////////////////////////////
 
@@ -6373,14 +6373,14 @@ var _undefined        = undefined,
     /** @name angular.service */
     angularService    = extensionMap(angular, 'service'),
     angularCallbacks  = extensionMap(angular, 'callbacks'),
-    nodeName,
+    nodeName_,
     rngScript         = /^(|.*\/)angular(-.*?)?(\.min)?.js(\?[^#]*)?(#(.*))?$/,
     DATE_ISOSTRING_LN = 24;
 
 /**
  * @workInProgress
  * @ngdoc function
- * @name angular.foreach
+ * @name angular.forEach
  * @function
  *
  * @description
@@ -6389,10 +6389,12 @@ var _undefined        = undefined,
  * `value` is the value of an object property or an array element and `key` is the object property
  * key or array element index. Optionally, `context` can be specified for the iterator function.
  *
+ * Note: this function was previously known as `angular.foreach`.
+ *
    <pre>
      var values = {name: 'misko', gender: 'male'};
      var log = [];
-     angular.foreach(values, function(value, key){
+     angular.forEach(values, function(value, key){
        this.push(key + ': ' + value);
      }, log);
      expect(log).toEqual(['name: misko', 'gender:male']);
@@ -6403,7 +6405,7 @@ var _undefined        = undefined,
  * @param {Object} context Object to become context (`this`) for the iterator function.
  * @returns {Objet|Array} Reference to `obj`.
  */
-function foreach(obj, iterator, context) {
+function forEach(obj, iterator, context) {
   var key;
   if (obj) {
     if (isFunction(obj)){
@@ -6412,7 +6414,7 @@ function foreach(obj, iterator, context) {
           iterator.call(context, obj[key], key);
         }
       }
-    } else if (obj.forEach) {
+    } else if (obj.forEach && obj.forEach !== forEach) {
       obj.forEach(iterator, context);
     } else if (isObject(obj) && isNumber(obj.length)) {
       for (key = 0; key < obj.length; key++)
@@ -6425,7 +6427,7 @@ function foreach(obj, iterator, context) {
   return obj;
 }
 
-function foreachSorted(obj, iterator, context) {
+function forEachSorted(obj, iterator, context) {
   var keys = [];
   for (var key in obj) keys.push(key);
   keys.sort();
@@ -6462,9 +6464,9 @@ function formatError(arg) {
  * @param {...Object} src The source object(s).
  */
 function extend(dst) {
-  foreach(arguments, function(obj){
+  forEach(arguments, function(obj){
     if (obj !== dst) {
-      foreach(obj, function(value, key){
+      forEach(obj, function(value, key){
         dst[key] = value;
       });
     }
@@ -6518,18 +6520,11 @@ function identity($) {return $;}
 
 function valueFn(value) {return function(){ return value; };}
 
-
 function extensionMap(angular, name, transform) {
   var extPoint;
   return angular[name] || (extPoint = angular[name] = function (name, fn, prop){
     name = (transform || identity)(name);
     if (isDefined(fn)) {
-      if (isDefined(extPoint[name])) {
-        foreach(extPoint[name], function(property, key) {
-          if (key.charAt(0) == '$' && isUndefined(fn[key]))
-            fn[key] = property;
-        });
-      }
       extPoint[name] = extend(fn, prop || {});
     }
     return extPoint[name];
@@ -6543,7 +6538,7 @@ function jqLiteWrap(element) {
       var div = document.createElement('div');
       div.innerHTML = element;
       element = new JQLite(div.childNodes);
-    } else if (!(element instanceof JQLite) && isElement(element)) {
+    } else if (!(element instanceof JQLite)) {
       element =  new JQLite(element);
     }
   }
@@ -6672,8 +6667,19 @@ function isArray(value) { return value instanceof Array; }
 function isFunction(value){ return typeof value == $function;}
 
 
+/**
+ * Checks if `obj` is a window object.
+ *
+ * @private
+ * @param {*} obj Object to check
+ * @returns {boolean} True if `obj` is a window obj.
+ */
+function isWindow(obj) {
+  return obj && obj.document && obj.location && obj.alert && obj.setInterval;
+}
+
 function isBoolean(value) { return typeof value == $boolean;}
-function isTextNode(node) { return nodeName(node) == '#text'; }
+function isTextNode(node) { return nodeName_(node) == '#text'; }
 function trim(value) { return isString(value) ? value.replace(/^\s*/, '').replace(/\s*$/, '') : value; }
 function isElement(node) {
   return node && (node.nodeName || node instanceof JQLite || (jQuery && node instanceof jQuery));
@@ -6697,12 +6703,12 @@ function HTML(html, option) {
 }
 
 if (msie) {
-  nodeName = function(element) {
+  nodeName_ = function(element) {
     element = element.nodeName ? element : element[0];
     return (element.scopeName && element.scopeName != 'HTML' ) ? uppercase(element.scopeName + ':' + element.nodeName) : element.nodeName;
   };
 } else {
-  nodeName = function(element) {
+  nodeName_ = function(element) {
     return element.nodeName ? element.nodeName : element[0].nodeName;
   };
 }
@@ -6720,7 +6726,7 @@ function isVisible(element) {
 
 function map(obj, iterator, context) {
   var results = [];
-  foreach(obj, function(value, index, list) {
+  forEach(obj, function(value, index, list) {
     results.push(iterator.call(context, value, index, list));
   });
   return results;
@@ -6841,7 +6847,7 @@ function copy(source, destination){
         destination.push(copy(source[i]));
       }
     } else {
-      foreach(destination, function(value, key){
+      forEach(destination, function(value, key){
         delete destination[key];
       });
       for ( var key in source) {
@@ -6890,6 +6896,7 @@ function copy(source, destination){
  */
 function equals(o1, o2) {
   if (o1 == o2) return true;
+  if (o1 === null || o2 === null) return false;
   var t1 = typeof o1, t2 = typeof o2, length, key, keySet;
   if (t1 == t2 && t1 == 'object') {
     if (o1 instanceof Array) {
@@ -6970,7 +6977,7 @@ function concat(array1, array2, index) {
  */
 function bind(self, fn) {
   var curryArgs = arguments.length > 2 ? slice.call(arguments, 2, arguments.length) : [];
-  if (typeof fn == $function) {
+  if (typeof fn == $function && !(fn instanceof RegExp)) {
     return curryArgs.length ? function() {
       return arguments.length ? fn.apply(self, curryArgs.concat(slice.call(arguments, 0, arguments.length))) : fn.apply(self, curryArgs);
     }: function() {
@@ -7039,7 +7046,7 @@ function compile(element, parentScope) {
  */
 function parseKeyValue(/**string*/keyValue) {
   var obj = {}, key_value, key;
-  foreach((keyValue || "").split('&'), function(keyValue){
+  forEach((keyValue || "").split('&'), function(keyValue){
     if (keyValue) {
       key_value = keyValue.split('=');
       key = unescape(key_value[0]);
@@ -7051,7 +7058,7 @@ function parseKeyValue(/**string*/keyValue) {
 
 function toKeyValue(obj) {
   var parts = [];
-  foreach(obj, function(value, key) {
+  forEach(obj, function(value, key) {
     parts.push(escape(key) + (value === true ? '' : '=' + escape(value)));
   });
   return parts.length ? parts.join('&') : '';
@@ -7212,7 +7219,7 @@ function angularInit(config){
   if (config.autobind) {
     // TODO default to the source of angular.js
     var scope = compile(window.document, _null, {'$config':config}),
-        $browser = scope.$inject('$browser');
+        $browser = scope.$service('$browser');
 
     if (config.css)
       $browser.addCss(config.base_url + config.css);
@@ -7301,12 +7308,12 @@ function fromJson(json, useNative) {
     throw e;
   }
 
-  // TODO make foreach optionally recursive and remove this function
+  // TODO make forEach optionally recursive and remove this function
   function transformDates(obj) {
     if (isString(obj) && obj.length === DATE_ISOSTRING_LN) {
       return angularString.toDate(obj);
     } else if (isArray(obj) || isObject(obj)) {
-      foreach(obj, function(val, name) {
+      forEach(obj, function(val, name) {
         obj[name] = transformDates(val);
       });
     }
@@ -7420,8 +7427,8 @@ Template.prototype = {
   init: function(element, scope) {
     var inits = {};
     this.collectInits(element, inits, scope);
-    foreachSorted(inits, function(queue){
-      foreach(queue, function(fn) {fn();});
+    forEachSorted(inits, function(queue){
+      forEach(queue, function(fn) {fn();});
     });
   },
 
@@ -7436,10 +7443,10 @@ Template.prototype = {
       scope.$onEval(childScope.$eval);
       element.data($$scope, childScope);
     }
-    foreach(this.inits, function(fn) {
+    forEach(this.inits, function(fn) {
       queue.push(function() {
         childScope.$tryEval(function(){
-          return childScope.$inject(fn, childScope, element);
+          return childScope.$service(fn, childScope, element);
         }, element);
       });
     });
@@ -7478,6 +7485,7 @@ Template.prototype = {
  */
 function retrieveScope(element) {
   var scope;
+  element = jqLite(element);
   while (element && !(scope = element.data($$scope))) {
     element = element.parent();
   }
@@ -7585,7 +7593,7 @@ Compiler.prototype = {
         directiveFns = self.directives,
         descend = true,
         directives = true,
-        elementName = nodeName(element),
+        elementName = nodeName_(element),
         template,
         selfApi = {
           compile: bind(self, self.compile),
@@ -7635,7 +7643,7 @@ Compiler.prototype = {
       for(var i=0, child=element[0].childNodes;
           i<child.length; i++) {
         if (isTextNode(child[i])) {
-          foreach(self.markup, function(markup){
+          forEach(self.markup, function(markup){
             if (i<child.length) {
               var textNode = jqLite(child[i]);
               markup.call(selfApi, textNode.text(), textNode, element);
@@ -7648,7 +7656,7 @@ Compiler.prototype = {
     if (directives) {
       // Process attributes/directives
       eachAttribute(element, function(value, name){
-        foreach(self.attrMarkup, function(markup){
+        forEach(self.attrMarkup, function(markup){
           markup.call(selfApi, value, name, element);
         });
       });
@@ -7690,7 +7698,7 @@ function eachAttribute(element, fn){
     }
     attrValue[name] = value;
   }
-  foreachSorted(attrValue, fn);
+  forEachSorted(attrValue, fn);
 }
 
 function getter(instance, path, unboundFn) {
@@ -7743,7 +7751,7 @@ var scopeId = 0,
     getterFnCache = {},
     compileCache = {},
     JS_KEYWORDS = {};
-foreach(
+forEach(
     ("abstract,boolean,break,byte,case,catch,char,class,const,continue,debugger,default," +
     "delete,do,double,else,enum,export,extends,false,final,finally,float,for,function,goto," +
     "if,implements,import,ininstanceof,intinterface,long,native,new,null,package,private," +
@@ -7756,7 +7764,7 @@ function getterFn(path){
   if (fn) return fn;
 
   var code = 'var l, fn, t;\n';
-  foreach(path.split('.'), function(key) {
+  forEach(path.split('.'), function(key) {
     key = (JS_KEYWORDS[key]) ? '["' + key + '"]' : '.' + key;
     code += 'if(!s) return s;\n' +
             'l=s;\n' +
@@ -8270,10 +8278,10 @@ function createScope(parent, providers, instanceCache) {
     $become: function(Class) {
       if (isFunction(Class)) {
         instance.constructor = Class;
-        foreach(Class.prototype, function(fn, name){
+        forEach(Class.prototype, function(fn, name){
           instance[name] = bind(instance, fn);
         });
-        instance.$inject.apply(instance, concat([Class, instance], arguments, 1));
+        instance.$service.apply(instance, concat([Class, instance], arguments, 1));
 
         //TODO: backwards compatibility hack, remove when we don't depend on init methods
         if (isFunction(Class.prototype.init)) {
@@ -8310,7 +8318,23 @@ function createScope(parent, providers, instanceCache) {
   if (!parent.$root) {
     instance.$root = instance;
     instance.$parent = instance;
-    (instance.$inject = createInjector(instance, providers, instanceCache))();
+
+    /**
+     * @workInProgress
+     * @ngdoc function
+     * @name angular.scope.$service
+     * @function
+     *
+     * @description
+     * Provides access to angular's dependency injector and
+     * {@link angular.service registered services}. In general the use of this api is discouraged,
+     * except for tests and components that currently don't support dependency injection (widgets,
+     * filters, etc).
+     *
+     * @param {string} serviceId String ID of the service to return.
+     * @returns {*} Value, object or function returned by the service factory function if any.
+     */
+    (instance.$service = createInjector(instance, providers, instanceCache))();
   }
 
   return instance;
@@ -8354,7 +8378,7 @@ function createInjector(providerScope, providers, cache) {
    *   none:   same as object but use providerScope as place to publish.
    */
   return function inject(value, scope, args){
-    var returnValue, provider, creation;
+    var returnValue, provider;
     if (isString(value)) {
       if (!cache.hasOwnProperty(value)) {
         provider = providers[value];
@@ -8364,28 +8388,36 @@ function createInjector(providerScope, providers, cache) {
       returnValue = cache[value];
     } else if (isArray(value)) {
       returnValue = [];
-      foreach(value, function(name) {
+      forEach(value, function(name) {
         returnValue.push(inject(name));
       });
     } else if (isFunction(value)) {
       returnValue = inject(value.$inject || []);
       returnValue = value.apply(scope, concat(returnValue, arguments, 2));
     } else if (isObject(value)) {
-      foreach(providers, function(provider, name){
-        creation = provider.$creation;
-        if (creation == 'eager') {
+      forEach(providers, function(provider, name){
+        if (provider.$eager)
           inject(name);
-        }
-        if (creation == 'eager-published') {
-          setter(value, name, inject(name));
-        }
+
+        if (provider.$creation)
+          throw new Error("Failed to register service '" + name +
+              "': $creation property is unsupported. Use $eager:true or see release notes.");
       });
     } else {
       returnValue = inject(providerScope);
     }
     return returnValue;
   };
-}var OPERATORS = {
+}
+
+function injectService(services, fn) {
+  return extend(fn, {$inject:services});;
+}
+
+function injectUpdateView(fn) {
+  return injectService(['$updateView'], fn);
+}
+var OPERATORS = {
     'null':function(self){return _null;},
     'true':function(self){return true;},
     'false':function(self){return false;},
@@ -8603,7 +8635,26 @@ function lex(text, parseStringsForObjects){
 
 function parser(text, json){
   var ZERO = valueFn(0),
-      tokens = lex(text, json);
+      tokens = lex(text, json),
+      assignment = _assignment, 
+      functionCall = _functionCall, 
+      fieldAccess = _fieldAccess, 
+      objectIndex = _objectIndex, 
+      filterChain = _filterChain, 
+      functionIdent = _functionIdent, 
+      pipeFunction = _pipeFunction;
+  if(json){
+    // The extra level of aliasing is here, just in case the lexer misses something, so that 
+    // we prevent any accidental execution in JSON.
+    assignment = logicalOR;
+    functionCall = 
+      fieldAccess = 
+      objectIndex = 
+      filterChain = 
+      functionIdent = 
+      pipeFunction = 
+        function (){ throwError("is not valid json", {text:text, index:0}); };
+  }
   return {
       assertAllConsumed: assertAllConsumed,
       primary: primary,
@@ -8701,7 +8752,7 @@ function parser(text, json){
     }
   }
 
-  function filterChain(){
+  function _filterChain(){
     var left = expression();
     var token;
     while(true) {
@@ -8721,7 +8772,7 @@ function parser(text, json){
     return pipeFunction(angularValidator);
   }
 
-  function pipeFunction(fnScope){
+  function _pipeFunction(fnScope){
     var fn = functionIdent(fnScope);
     var argsFn = [];
     var token;
@@ -8747,7 +8798,7 @@ function parser(text, json){
     return assignment();
   }
 
-  function assignment(){
+  function _assignment(){
     var left = logicalOR();
     var right;
     var token;
@@ -8835,7 +8886,7 @@ function parser(text, json){
     }
   }
 
-  function functionIdent(fnScope) {
+  function _functionIdent(fnScope) {
     var token = expect();
     var element = token.text.split('.');
     var instance = fnScope;
@@ -8883,7 +8934,7 @@ function parser(text, json){
     return primary;
   }
 
-  function fieldAccess(object) {
+  function _fieldAccess(object) {
     var field = expect().text;
     var getter = getterFn(field);
     return extend(function (self){
@@ -8895,7 +8946,7 @@ function parser(text, json){
     });
   }
 
-  function objectIndex(obj) {
+  function _objectIndex(obj) {
     var indexFn = expression();
     consume(']');
     return extend(
@@ -8910,7 +8961,7 @@ function parser(text, json){
       });
   }
 
-  function functionCall(fn) {
+  function _functionCall(fn) {
     var argsFn = [];
     if (peekToken().text != ')') {
       do {
@@ -9016,7 +9067,7 @@ function Route(template, defaults) {
   this.template = template = template + '#';
   this.defaults = defaults || {};
   var urlParams = this.urlParams = {};
-  foreach(template.split(/\W/), function(param){
+  forEach(template.split(/\W/), function(param){
     if (param && template.match(new RegExp(":" + param + "\\W"))) {
       urlParams[param] = true;
     }
@@ -9029,13 +9080,13 @@ Route.prototype = {
     var self = this;
     var url = this.template;
     params = params || {};
-    foreach(this.urlParams, function(_, urlParam){
+    forEach(this.urlParams, function(_, urlParam){
       var value = params[urlParam] || self.defaults[urlParam] || "";
       url = url.replace(new RegExp(":" + urlParam + "(\\W)"), value + "$1");
     });
     url = url.replace(/\/?#$/, '');
     var query = [];
-    foreachSorted(params, function(value, key){
+    forEachSorted(params, function(value, key){
       if (!self.urlParams[key]) {
         query.push(encodeURI(key) + '=' + encodeURI(value));
       }
@@ -9064,7 +9115,7 @@ ResourceFactory.prototype = {
     actions = extend({}, ResourceFactory.DEFAULT_ACTIONS, actions);
     function extractParams(data){
       var ids = {};
-      foreach(paramDefaults || {}, function(value, key){
+      forEach(paramDefaults || {}, function(value, key){
         ids[key] = value.charAt && value.charAt(0) == '@' ? getter(data, value.substr(1)) : value;
       });
       return ids;
@@ -9074,7 +9125,7 @@ ResourceFactory.prototype = {
       copy(value || {}, this);
     }
 
-    foreach(actions, function(action, name){
+    forEach(actions, function(action, name){
       var isPostOrPut = action.method == 'POST' || action.method == 'PUT';
       Resource[name] = function (a1, a2, a3) {
         var params = {};
@@ -9085,6 +9136,7 @@ ResourceFactory.prototype = {
         case 2:
           if (isFunction(a2)) {
             callback = a2;
+            //fallthrough
           } else {
             params = a1;
             data = a2;
@@ -9109,7 +9161,7 @@ ResourceFactory.prototype = {
             if (status == 200) {
               if (action.isArray) {
                 value.length = 0;
-                foreach(response, function(item){
+                forEach(response, function(item){
                   value.push(new Resource(item));
                 });
               } else {
@@ -9155,8 +9207,29 @@ var XHR = window.XMLHttpRequest || function () {
   throw new Error("This browser does not support XMLHttpRequest.");
 };
 
-function Browser(location, document, head, XHR, $log, setTimeout) {
-  var self = this;
+/**
+ * @private
+ * @name Browser
+ *
+ * @description
+ * Constructor for the object exposed as $browser service.
+ *
+ * This object has two goals:
+ *
+ * - hide all the global state in the browser caused by the window object
+ * - abstract away all the browser specific features and inconsistencies
+ *
+ * @param {object} window The global window object.
+ * @param {object} document jQuery wrapped document.
+ * @param {object} body jQuery wrapped document.body.
+ * @param {function()} XHR XMLHttpRequest constructor.
+ * @param {object} $log console.log or an object with the same interface.
+ */
+function Browser(window, document, body, XHR, $log) {
+  var self = this,
+      location = window.location,
+      setTimeout = window.setTimeout;
+
   self.isMock = false;
 
   //////////////////////////////////////////////////////////////
@@ -9217,7 +9290,7 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
         window[callbackId] = _undefined;
         callback(200, data);
       };
-      head.append(script);
+      body.append(script);
     } else {
       var xhr = new XHR();
       xhr.open(method, url, true);
@@ -9262,7 +9335,7 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
    * @methodOf angular.service.$browser
    */
   self.poll = function() {
-    foreach(pollFns, function(pollFn){ pollFn(); });
+    forEach(pollFns, function(pollFn){ pollFn(); });
   };
 
   /**
@@ -9340,6 +9413,41 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
     return location.href;
   };
 
+
+  /**
+   * @workInProgress
+   * @ngdoc method
+   * @name angular.service.$browser#onHashChange
+   * @methodOf angular.service.$browser
+   *
+   * @description
+   * Detects if browser support onhashchange events and register a listener otherwise registers
+   * $browser poller. The `listener` will then get called when the hash changes.
+   *
+   * The listener gets called with either HashChangeEvent object or simple object that also contains
+   * `oldURL` and `newURL` properties.
+   *
+   * NOTE: this is a api is intended for sole use by $location service. Please use
+   * {@link angular.service.$location $location service} to monitor hash changes in angular apps.
+   *
+   * @param {function(event)} listener Listener function to be called when url hash changes.
+   * @return {function()} Returns the registered listener fn - handy if the fn is anonymous.
+   */
+  self.onHashChange = function(listener) {
+    if ('onhashchange' in window) {
+      jqLite(window).bind('hashchange', listener);
+    } else {
+      var lastBrowserUrl = self.getUrl();
+
+      self.addPollFn(function() {
+        if (lastBrowserUrl != self.getUrl()) {
+          listener();
+        }
+      });
+    }
+    return listener;
+  }
+
   //////////////////////////////////////////////////////////////
   // Cookies API
   //////////////////////////////////////////////////////////////
@@ -9410,22 +9518,23 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
 
   /**
    * @workInProgress
-   * @ngdoc
+   * @ngdoc method
    * @name angular.service.$browser#defer
    * @methodOf angular.service.$browser
+   * @param {function()} fn A function, who's execution should be defered.
+   * @param {int=} [delay=0] of milliseconds to defer the function execution.
    *
    * @description
-   * Executes a fn asynchroniously via `setTimeout(fn, 0)`.
+   * Executes a fn asynchroniously via `setTimeout(fn, delay)`.
    *
    * Unlike when calling `setTimeout` directly, in test this function is mocked and instead of using
    * `setTimeout` in tests, the fns are queued in an array, which can be programaticaly flushed via
    * `$browser.defer.flush()`.
    *
-   * @param {function()} fn A function, who's execution should be defered.
    */
-  self.defer = function(fn) {
+  self.defer = function(fn, delay) {
     outstandingRequestCount++;
-    setTimeout(function() { completeOutstandingRequest(fn); }, 0);
+    setTimeout(function() { completeOutstandingRequest(fn); }, delay || 0);
   };
 
   //////////////////////////////////////////////////////////////
@@ -9483,7 +9592,7 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
     link.attr('rel', 'stylesheet');
     link.attr('type', 'text/css');
     link.attr('href', url);
-    head.append(link);
+    body.append(link);
   };
 
 
@@ -9504,7 +9613,7 @@ function Browser(location, document, head, XHR, $log, setTimeout) {
     script.attr('type', 'text/javascript');
     script.attr('src', url);
     if (dom_id) script.attr('id', dom_id);
-    head.append(script);
+    body.append(script);
   };
 }
 /*
@@ -9761,7 +9870,7 @@ function htmlSanitizeWriter(buf){
       if (!ignore && validElements[tag] == true) {
         out('<');
         out(tag);
-        foreach(attrs, function(value, key){
+        forEach(attrs, function(value, key){
           var lkey=lowercase(key);
           if (validAttrs[lkey]==true && (uriAttrs[lkey]!==true || value.match(URI_REGEXP))) {
             out(' ');
@@ -9799,12 +9908,12 @@ function htmlSanitizeWriter(buf){
 var jqCache = {},
     jqName = 'ng-' + new Date().getTime(),
     jqId = 1,
-    addEventListener = (window.document.attachEvent ?
-      function(element, type, fn) {element.attachEvent('on' + type, fn);} :
-      function(element, type, fn) {element.addEventListener(type, fn, false);}),
-    removeEventListener = (window.document.detachEvent ?
-      function(element, type, fn) {element.detachEvent('on' + type, fn); } :
-      function(element, type, fn) { element.removeEventListener(type, fn, false); });
+    addEventListenerFn = (window.document.addEventListener ?
+      function(element, type, fn) {element.addEventListener(type, fn, false);} :
+      function(element, type, fn) {element.attachEvent('on' + type, fn);}),
+    removeEventListenerFn = (window.document.removeEventListener ?
+      function(element, type, fn) {element.removeEventListener(type, fn, false); } :
+      function(element, type, fn) {element.detachEvent('on' + type, fn); });
 
 function jqNextId() { return (jqId++); }
 
@@ -9812,8 +9921,8 @@ function jqClearData(element) {
   var cacheId = element[jqName],
       cache = jqCache[cacheId];
   if (cache) {
-    foreach(cache.bind || {}, function(fn, type){
-      removeEventListener(element, type, fn);
+    forEach(cache.bind || {}, function(fn, type){
+      removeEventListenerFn(element, type, fn);
     });
     delete jqCache[cacheId];
     if (msie)
@@ -9841,14 +9950,14 @@ function getStyle(element) {
 }
 
 function JQLite(element) {
-  if (isElement(element)) {
-    this[0] = element;
-    this.length = 1;
-  } else if (isDefined(element.length) && element.item) {
+  if (!isElement(element) && isDefined(element.length) && element.item && !isWindow(element)) {
     for(var i=0; i < element.length; i++) {
       this[i] = element[i];
     }
     this.length = element.length;
+  } else {
+    this[0] = element;
+    this.length = 1;
   }
 }
 
@@ -9875,10 +9984,23 @@ JQLite.prototype = {
   dealoc: function(){
     (function dealoc(element){
       jqClearData(element);
-      for ( var i = 0, children = element.childNodes; i < children.length; i++) {
+      for ( var i = 0, children = element.childNodes || []; i < children.length; i++) {
         dealoc(children[i]);
       }
     })(this[0]);
+  },
+
+  ready: function(fn) {
+    var fired = false;
+
+    function trigger() {
+      if (fired) return;
+      fired = true;
+      fn();
+    }
+
+    this.bind('DOMContentLoaded', trigger); // works for modern browsers and IE9
+    jqLite(window).bind('load', trigger); // fallback to window.onload for others
   },
 
   bind: function(type, fn){
@@ -9887,7 +10009,7 @@ JQLite.prototype = {
         bind = self.data('bind'),
         eventHandler;
     if (!bind) this.data('bind', bind = {});
-    foreach(type.split(' '), function(type){
+    forEach(type.split(' '), function(type){
       eventHandler = bind[type];
       if (!eventHandler) {
         bind[type] = eventHandler = function(event) {
@@ -9901,12 +10023,12 @@ JQLite.prototype = {
               event.cancelBubble = true; //ie
             };
           }
-          foreach(eventHandler.fns, function(fn){
+          forEach(eventHandler.fns, function(fn){
             fn.call(self, event);
           });
         };
         eventHandler.fns = [];
-        addEventListener(element, type, eventHandler);
+        addEventListenerFn(element, type, eventHandler);
       }
       eventHandler.fns.push(fn);
     });
@@ -9923,7 +10045,7 @@ JQLite.prototype = {
   append: function(node) {
     var self = this[0];
     node = jqLite(node);
-    foreach(node, function(child){
+    forEach(node, function(child){
       self.appendChild(child);
     });
   },
@@ -9981,7 +10103,7 @@ JQLite.prototype = {
   attr: function(name, value){
     var e = this[0];
     if (isObject(name)) {
-      foreach(name, function(value, name){
+      forEach(name, function(value, name){
         e.setAttribute(name, value);
       });
     } else if (isDefined(value)) {
@@ -10540,7 +10662,7 @@ var angularArray = {
   'count':function(array, condition) {
     if (!condition) return array.length;
     var fn = angular['Function']['compile'](condition), count = 0;
-    foreach(array, function(value){
+    forEach(array, function(value){
       if (fn(value)) {
         count ++;
       }
@@ -10788,7 +10910,7 @@ var angularFunction = {
 
 function defineApi(dst, chain){
   angular[dst] = angular[dst] || {};
-  foreach(chain, function(parent){
+  forEach(chain, function(parent){
     extend(angular[dst], parent);
   });
 }
@@ -11020,12 +11142,18 @@ angularFilter.date = function(date, format) {
   var text = date.toLocaleDateString(), fn;
   if (format && isString(format)) {
     text = '';
-    var parts = [];
+    var parts = [], match;
     while(format) {
-      parts = concat(parts, DATE_FORMATS_SPLIT.exec(format), 1);
-      format = parts.pop();
+      match = DATE_FORMATS_SPLIT.exec(format);
+      if (match) {
+        parts = concat(parts, match, 1);
+        format = parts.pop();
+      } else {
+        parts.push(format);
+        format = null;
+      }
     }
-    foreach(parts, function(value){
+    forEach(parts, function(value){
       fn = DATE_FORMATS[value];
       text += fn ? fn(date) : value;
     });
@@ -11396,7 +11524,7 @@ angularFormatter.list = formatter(
   function(obj) { return obj ? obj.join(", ") : obj; },
   function(value) {
     var list = [];
-    foreach((value || '').split(','), function(item){
+    forEach((value || '').split(','), function(item){
       item = trim(item);
       if (item) list.push(item);
     });
@@ -11444,13 +11572,19 @@ extend(angularValidator, {
    * Use regexp validator to restrict the input to any Regular Expression.
    * 
    * @param {string} value value to validate
-   * @param {regexp} expression regular expression.
+   * @param {string|regexp} expression regular expression.
+   * @param {string=} msg error message to display.
    * @css ng-validation-error
    * 
    * @example
-   * <script> var ssn = /^\d\d\d-\d\d-\d\d\d\d$/; </script>
+   * <script> function Cntl(){
+   *   this.ssnRegExp = /^\d\d\d-\d\d-\d\d\d\d$/; 
+   * }
+   * </script>
    * Enter valid SSN:
-   * <input name="ssn" value="123-45-6789" ng:validate="regexp:$window.ssn" >
+   * <div ng:controller="Cntl">
+   * <input name="ssn" value="123-45-6789" ng:validate="regexp:ssnRegExp" >
+   * </div>
    * 
    * @scenario
    * it('should invalidate non ssn', function(){
@@ -11768,14 +11902,18 @@ extend(angularValidator, {
    * 
    * @example
    * <script>
-   *   function myValidator(inputToValidate, validationDone) {
-   *    setTimeout(function(){
-   *      validationDone(inputToValidate.length % 2);
-   *    }, 500);
+   * function MyCntl(){
+   *   this.myValidator = function (inputToValidate, validationDone) {
+   *     setTimeout(function(){
+   *       validationDone(inputToValidate.length % 2);
+   *     }, 500);
+   *   }
    *  }
    * </script>
    *  This input is validated asynchronously:
-   *  <input name="text" ng:validate="asynchronous:$window.myValidator">
+   *  <div ng:controller="MyCntl">
+   *    <input name="text" ng:validate="asynchronous:myValidator">
+   *  </div>
    * 
    * @scenario
    * it('should change color in delayed way', function(){
@@ -11817,10 +11955,12 @@ extend(angularValidator, {
 
     cache.current = input;
 
-    var inputState = cache.inputs[input];
+    var inputState = cache.inputs[input],
+        $invalidWidgets = scope.$service('$invalidWidgets');
+
     if (!inputState) {
       cache.inputs[input] = inputState = { inFlight: true };
-      scope.$invalidWidgets.markInvalid(scope.$element);
+      $invalidWidgets.markInvalid(scope.$element);
       element.addClass('ng-input-indicator-wait');
       asynchronousFn(input, function(error, data) {
         inputState.response = data;
@@ -11828,14 +11968,14 @@ extend(angularValidator, {
         inputState.inFlight = false;
         if (cache.current == input) {
           element.removeClass('ng-input-indicator-wait');
-          scope.$invalidWidgets.markValid(element);
+          $invalidWidgets.markValid(element);
         }
         element.data($$validate)();
-        scope.$root.$eval();
+        scope.$service('$updateView')();
       });
     } else if (inputState.inFlight) {
       // request in flight, mark widget invalid, but don't show it to user
-      scope.$invalidWidgets.markInvalid(scope.$element);
+      $invalidWidgets.markInvalid(scope.$element);
     } else {
       (updateFn||noop)(inputState.response);
     }
@@ -11846,11 +11986,10 @@ extend(angularValidator, {
 var URL_MATCH = /^(file|ftp|http|https):\/\/(\w+:{0,1}\w*@)?([\w\.-]*)(:([0-9]+))?(\/[^\?#]*)?(\?([^#]*))?(#(.*))?$/,
     HASH_MATCH = /^([^\?]*)?(\?([^\?]*))?$/,
     DEFAULT_PORTS = {'http': 80, 'https': 443, 'ftp':21},
-    EAGER = 'eager',
-    EAGER_PUBLISHED = EAGER + '-published';
+    EAGER = true;
 
 function angularServiceInject(name, fn, inject, eager) {
-  angularService(name, fn, {$inject:inject, $creation:eager});
+  angularService(name, fn, {$inject:inject, $eager:eager});
 }
 
 /**
@@ -11871,7 +12010,7 @@ function angularServiceInject(name, fn, inject, eager) {
    <input ng:init="greeting='Hello World!'" type="text" name="greeting" />
    <button ng:click="$window.alert(greeting)">ALERT</button>
  */
-angularServiceInject("$window", bind(window, identity, window), [], EAGER_PUBLISHED);
+angularServiceInject("$window", bind(window, identity, window), [], EAGER);
 
 /**
  * @workInProgress
@@ -11884,7 +12023,7 @@ angularServiceInject("$window", bind(window, identity, window), [], EAGER_PUBLIS
  */
 angularServiceInject("$document", function(window){
   return jqLite(window.document);
-}, ['$window'], EAGER_PUBLISHED);
+}, ['$window'], EAGER);
 
 /**
  * @workInProgress
@@ -11914,26 +12053,19 @@ angularServiceInject("$document", function(window){
    <input type='text' name="$location.hash"/>
    <pre>$location = {{$location}}</pre>
  */
-angularServiceInject("$location", function(browser) {
+angularServiceInject("$location", function($browser) {
   var scope = this,
-      location = {toString:toString, update:update, updateHash: updateHash},
-      lastBrowserUrl = browser.getUrl(),
-      lastLocationHref,
-      lastLocationHash;
+      location = {update:update, updateHash: updateHash},
+      lastLocation = {};
 
-  browser.addPollFn(function() {
-    if (lastBrowserUrl != browser.getUrl()) {
-      update(lastBrowserUrl = browser.getUrl());
-      updateLastLocation();
-      scope.$eval();
-    }
-  });
+  $browser.onHashChange(function() { //register
+    update($browser.getUrl());
+    copy(location, lastLocation);
+    scope.$eval();
+  })(); //initialize
 
-  this.$onEval(PRIORITY_FIRST, updateBrowser);
+  this.$onEval(PRIORITY_FIRST, sync);
   this.$onEval(PRIORITY_LAST, updateBrowser);
-
-  update(lastBrowserUrl);
-  updateLastLocation();
 
   return location;
 
@@ -11955,7 +12087,7 @@ angularServiceInject("$location", function(browser) {
    * scope.$location.update({host: 'www.google.com', protocol: 'https'});
    * scope.$location.update({hashPath: '/path', hashSearch: {a: 'b', x: true}});
    *
-   * @param {(string|Object)} href Full href as a string or hash object with properties
+   * @param {(string|Object)} href Full href as a string or object with properties
    */
   function update(href) {
     if (isString(href)) {
@@ -12011,27 +12143,20 @@ angularServiceInject("$location", function(browser) {
     update(hash);
   }
 
-  /**
-   * @workInProgress
-   * @ngdoc method
-   * @name angular.service.$location#toString
-   * @methodOf angular.service.$location
-   * 
-   * @description
-   * Returns string representation - href
-   */
-  function toString() {
-    updateLocation();
-    return location.href;
-  }
 
   // INNER METHODS
 
   /**
-   * Update location object
+   * Synchronizes all location object properties.
    *
    * User is allowed to change properties, so after property change,
    * location object is not in consistent state.
+   *
+   * Properties are synced with the following precedence order:
+   *
+   * - `$location.href`
+   * - `$location.hash`
+   * - everything else
    *
    * @example
    * scope.$location.href = 'http://www.angularjs.org/path#a/b'
@@ -12039,34 +12164,34 @@ angularServiceInject("$location", function(browser) {
    *
    * This method checks the changes and update location to the consistent state
    */
-  function updateLocation() {
-    if (location.href == lastLocationHref) {
-      if (location.hash == lastLocationHash) {
-        location.hash = composeHash(location);
+  function sync() {
+    if (!equals(location, lastLocation)) {
+      if (location.href != lastLocation.href) {
+        update(location.href);
+        return;
       }
-      location.href = composeHref(location);
+      if (location.hash != lastLocation.hash) {
+        var hash = parseHash(location.hash);
+        updateHash(hash.path, hash.search);
+      } else {
+        location.hash = composeHash(location);
+        location.href = composeHref(location);
+      }
+      update(location.href);
     }
-    update(location.href);
   }
 
-  /**
-   * Update information about last location
-   */
-  function updateLastLocation() {
-    lastLocationHref = location.href;
-    lastLocationHash = location.hash;
-  }
 
   /**
    * If location has changed, update the browser
    * This method is called at the end of $eval() phase
    */
   function updateBrowser() {
-    updateLocation();
+    sync();
 
-    if (location.href != lastLocationHref) {    	
-      browser.setUrl(lastBrowserUrl = location.href);
-      updateLastLocation();
+    if ($browser.getUrl() != location.href) {
+      $browser.setUrl(location.href);
+      copy(location, lastLocation);
     }
   }
 
@@ -12140,7 +12265,7 @@ angularServiceInject("$location", function(browser) {
 
     return h;
   }
-}, ['$browser'], EAGER_PUBLISHED);
+}, ['$browser']);
 
 
 /**
@@ -12217,7 +12342,7 @@ angularServiceInject("$log", function($window){
     if (logFn.apply) {
       return function(){
         var args = [];
-        foreach(arguments, function(arg){
+        forEach(arguments, function(arg){
           args.push(formatError(arg));
         });
         return logFn.apply(console, args);
@@ -12227,7 +12352,7 @@ angularServiceInject("$log", function($window){
       return logFn;
     }
   }
-}, ['$window'], EAGER_PUBLISHED);
+}, ['$window'], EAGER);
 
 /**
  * @workInProgress
@@ -12251,7 +12376,67 @@ angularServiceInject('$exceptionHandler', function($log){
   return function(e) {
     $log.error(e);
   };
-}, ['$log'], EAGER_PUBLISHED);
+}, ['$log'], EAGER);
+
+/**
+ * @workInProgress
+ * @ngdoc service
+ * @name angular.service.$updateView
+ * @requires $browser
+ *
+ * @description
+ * Calling `$updateView` enqueues the eventual update of the view. (Update the DOM to reflect the
+ * model). The update is eventual, since there are often multiple updates to the model which may
+ * be deferred. The default update delayed is 25 ms. This means that the view lags the model by
+ * that time. (25ms is small enough that it is perceived as instantaneous by the user). The delay
+ * can be adjusted by setting the delay property of the service.
+ *
+ * <pre>angular.service('$updateView').delay = 10</pre>
+ *
+ * The delay is there so that multiple updates to the model which occur sufficiently close
+ * together can be merged into a single update.
+ *
+ * You don't usually call '$updateView' directly since angular does it for you in most cases,
+ * but there are some cases when you need to call it.
+ *
+ *  - `$updateView()` called automatically by angular:
+ *    - Your Application Controllers: Your controller code is called by angular and hence
+ *      angular is aware that you may have changed the model.
+ *    - Your Services: Your service is usually called by your controller code, hence same rules
+ *      apply.
+ *  - May need to call `$updateView()` manually:
+ *    - Widgets / Directives: If you listen to any DOM events or events on any third party
+ *      libraries, then angular is not aware that you may have changed state state of the
+ *      model, and hence you need to call '$updateView()' manually.
+ *    - 'setTimeout'/'XHR':  If you call 'setTimeout' (instead of {@link angular.service.$defer})
+ *      or 'XHR' (instead of {@link angular.service.$xhr}) then you may be changing the model
+ *      without angular knowledge and you may need to call '$updateView()' directly.
+ *
+ * NOTE: if you wish to update the view immediately (without delay), you can do so by calling
+ * {@link scope.$eval} at any time from your code:
+ * <pre>scope.$root.$eval()</pre>
+ *
+ * In unit-test mode the update is instantaneous and synchronous to simplify writing tests.
+ *
+ */
+
+function serviceUpdateViewFactory($browser){
+  var rootScope = this;
+  var scheduled;
+  function update(){
+    scheduled = false;
+    rootScope.$eval();
+  }
+  return $browser.isMock ? update : function(){
+    if (!scheduled) {
+      scheduled = true;
+      $browser.defer(update, serviceUpdateViewFactory.delay);
+    }
+  };
+}
+serviceUpdateViewFactory.delay = 25;
+
+angularServiceInject('$updateView', serviceUpdateViewFactory, ['$browser']);
 
 /**
  * @workInProgress
@@ -12344,7 +12529,7 @@ angularServiceInject("$invalidWidgets", function(){
   /** Return count of all invalid widgets that are currently visible */
   invalidWidgets.visible = function() {
     var count = 0;
-    foreach(invalidWidgets, function(widget){
+    forEach(invalidWidgets, function(widget){
       count = count + (isVisible(widget) ? 1 : 0);
     });
     return count;
@@ -12376,7 +12561,7 @@ angularServiceInject("$invalidWidgets", function(){
   }
 
   return invalidWidgets;
-}, [], EAGER_PUBLISHED);
+}, [], EAGER);
 
 
 
@@ -12384,7 +12569,7 @@ function switchRouteMatcher(on, when, dstName) {
   var regex = '^' + when.replace(/[\.\\\(\)\^\$]/g, "\$1") + '$',
       params = [],
       dst = {};
-  foreach(when.split(/\W/), function(param){
+  forEach(when.split(/\W/), function(param){
     if (param) {
       var paramRegExp = new RegExp(":" + param + "([\\W])");
       if (regex.match(paramRegExp)) {
@@ -12395,7 +12580,7 @@ function switchRouteMatcher(on, when, dstName) {
   });
   var match = on.match(new RegExp(regex));
   if (match) {
-    foreach(params, function(name, index){
+    forEach(params, function(name, index){
       dst[name] = match[index + 1];
     });
     if (dstName) this.$set(dstName, dst);
@@ -12504,7 +12689,7 @@ angularServiceInject('$route', function(location) {
   function updateRoute(){
     var childScope;
     $route.current = _null;
-    angular.foreach(routes, function(routeParams, route) {
+    angular.forEach(routes, function(routeParams, route) {
       if (!childScope) {
         var pathParams = matcher(location.hashPath, route);
         if (pathParams) {
@@ -12516,14 +12701,14 @@ angularServiceInject('$route', function(location) {
         }
       }
     });
-    angular.foreach(onChange, parentScope.$tryEval);
+    angular.forEach(onChange, parentScope.$tryEval);
     if (childScope) {
       childScope.$become($route.current.controller);
     }
   }
   this.$watch(function(){return dirty + location.hash;}, updateRoute);
   return $route;
-}, ['$location'], EAGER_PUBLISHED);
+}, ['$location']);
 
 /**
  * @workInProgress
@@ -12605,7 +12790,7 @@ angularServiceInject('$xhr.bulk', function($xhr, $error, $log){
       post = _null;
     }
     var currentQueue;
-    foreach(bulkXHR.urls, function(queue){
+    forEach(bulkXHR.urls, function(queue){
       if (isFunction(queue.match) ? queue.match(url) : queue.match.exec(url)) {
         currentQueue = queue;
       }
@@ -12619,13 +12804,13 @@ angularServiceInject('$xhr.bulk', function($xhr, $error, $log){
   }
   bulkXHR.urls = {};
   bulkXHR.flush = function(callback){
-    foreach(bulkXHR.urls, function(queue, url){
+    forEach(bulkXHR.urls, function(queue, url){
       var currentRequests = queue.requests;
       if (currentRequests && currentRequests.length) {
         queue.requests = [];
         queue.callbacks = [];
         $xhr('POST', url, {requests:currentRequests}, function(code, response){
-          foreach(response, function(response, i){
+          forEach(response, function(response, i){
             try {
               if (response.status == 200) {
                 (currentRequests[i].callback || noop)(response.status, response.response);
@@ -12663,7 +12848,7 @@ angularServiceInject('$xhr.bulk', function($xhr, $error, $log){
  *
  * @param {function()} fn A function, who's execution should be deferred.
  */
-angularServiceInject('$defer', function($browser, $exceptionHandler) {
+angularServiceInject('$defer', function($browser, $exceptionHandler, $updateView) {
   var scope = this;
 
   return function(fn) {
@@ -12673,11 +12858,11 @@ angularServiceInject('$defer', function($browser, $exceptionHandler) {
       } catch(e) {
         $exceptionHandler(e);
       } finally {
-        scope.$eval();
+        $updateView();
       }
     });
   };
-}, ['$browser', '$exceptionHandler']);
+}, ['$browser', '$exceptionHandler', '$updateView']);
 
 
 /**
@@ -12690,7 +12875,7 @@ angularServiceInject('$defer', function($browser, $exceptionHandler) {
  * 
  * @example
  */
-angularServiceInject('$xhr.cache', function($xhr, $defer){
+angularServiceInject('$xhr.cache', function($xhr, $defer, $log){
   var inflight = {}, self = this;
   function cache(method, url, post, callback, verifyCache){
     if (isFunction(post)) {
@@ -12714,11 +12899,11 @@ angularServiceInject('$xhr.cache', function($xhr, $defer){
             cache.data[url] = { value: response };
           var callbacks = inflight[url].callbacks;
           delete inflight[url];
-          foreach(callbacks, function(callback){
+          forEach(callbacks, function(callback){
             try {
               (callback||noop)(status, copy(response));
             } catch(e) {
-              self.$log.error(e);
+              $log.error(e);
             }
           });
         });
@@ -12732,7 +12917,7 @@ angularServiceInject('$xhr.cache', function($xhr, $defer){
   cache.data = {};
   cache.delegate = $xhr;
   return cache;
-}, ['$xhr.bulk', '$defer']);
+}, ['$xhr.bulk', '$defer', '$log']);
 
 
 /**
@@ -12969,7 +13154,7 @@ angularServiceInject('$cookies', function($browser) {
       }
     }
   }
-}, ['$browser'], EAGER_PUBLISHED);
+}, ['$browser']);
 
 /**
  * @workInProgress
@@ -13259,7 +13444,7 @@ function compileBindTemplate(template){
   var fn = bindTemplateCache[template];
   if (!fn) {
     var bindings = [];
-    foreach(parseBindings(template), function(text){
+    forEach(parseBindings(template), function(text){
       var exp = binding(text);
       bindings.push(exp ? function(element){
         var error, value = this.$tryEval(exp, function(e){
@@ -13460,14 +13645,14 @@ angularDirective("ng:bind-attr", function(expression){
  * TODO: maybe we should consider allowing users to control event propagation in the future.
  */
 angularDirective("ng:click", function(expression, element){
-  return function(element){
+  return injectUpdateView(function($updateView, element){
     var self = this;
     element.bind('click', function(event){
       self.$tryEval(expression, element);
-      self.$root.$eval();
+      $updateView();
       event.stopPropagation();
     });
-  };
+  });
 });
 
 
@@ -13508,14 +13693,14 @@ angularDirective("ng:click", function(expression, element){
  * server and reloading the current page).
  */
 angularDirective("ng:submit", function(expression, element) {
-  return function(element) {
+  return injectUpdateView(function($updateView, element) {
     var self = this;
     element.bind('submit', function(event) {
       self.$tryEval(expression, element);
-      self.$root.$eval();
+      $updateView();
       event.preventDefault();
     });
-  };
+  });
 });
 
 
@@ -13844,7 +14029,7 @@ angularTextMarkup('{{}}', function(text, textNode, parentElement) {
       parentElement.attr('ng:bind-template', text);
     } else {
       var cursor = textNode, newElement;
-      foreach(parseBindings(text), function(text){
+      forEach(parseBindings(text), function(text){
         var exp = binding(text);
         if (exp) {
           newElement = self.element('span');
@@ -13868,7 +14053,7 @@ angularTextMarkup('{{}}', function(text, textNode, parentElement) {
 
 // TODO: this should be widget not a markup
 angularTextMarkup('OPTION', function(text, textNode, parentElement){
-  if (nodeName(parentElement) == "OPTION") {
+  if (nodeName_(parentElement) == "OPTION") {
     var select = document.createElement('select');
     select.insertBefore(parentElement[0].cloneNode(true), _null);
     if (!select.innerHTML.match(/<option(\s.*\s|\s)value\s*=\s*.*>.*<\/\s*option\s*>/gi)) {
@@ -14219,7 +14404,7 @@ function valueAccessor(scope, element) {
       formatterName = element.attr('ng:format') || NOOP,
       formatter = angularFormatter(formatterName),
       format, parse, lastError, required,
-      invalidWidgets = scope.$invalidWidgets || {markValid:noop, markInvalid:noop};
+      invalidWidgets = scope.$service('$invalidWidgets') || {markValid:noop, markInvalid:noop};
   if (!validator) throw "Validator named '" + validatorName + "' not found.";
   if (!formatter) throw "Formatter named '" + formatterName + "' not found.";
   format = formatter.format;
@@ -14307,15 +14492,15 @@ function optionsAccessor(scope, element) {
   return {
     get: function(){
       var values = [];
-      foreach(options, function(option){
+      forEach(options, function(option){
         if (option.selected) values.push(option.value);
       });
       return values;
     },
     set: function(values){
       var keys = {};
-      foreach(values, function(value){ keys[value] = true; });
-      foreach(options, function(option){
+      forEach(values, function(value){ keys[value] = true; });
+      forEach(options, function(option){
         option.selected = keys[option.value];
       });
     }
@@ -14324,7 +14509,7 @@ function optionsAccessor(scope, element) {
 
 function noopAccessor() { return { get: noop, set: noop }; }
 
-var textWidget = inputWidget('keyup change', modelAccessor, valueAccessor, initWidgetValue(), true),
+var textWidget = inputWidget('keydown change', modelAccessor, valueAccessor, initWidgetValue(), true),
     buttonWidget = inputWidget('click', noopAccessor, noopAccessor, noop),
     INPUT_TYPE = {
       'text':            textWidget,
@@ -14402,8 +14587,8 @@ function radioInit(model, view, element) {
      expect(binding('checkboxCount')).toBe('1');
    });
  */
-function inputWidget(events, modelAccessor, viewAccessor, initFn, dirtyChecking) {
-  return function(element) {
+function inputWidget(events, modelAccessor, viewAccessor, initFn, textBox) {
+  return injectService(['$updateView', '$defer'], function($updateView, $defer, element) {
     var scope = this,
         model = modelAccessor(scope, element),
         view = viewAccessor(scope, element),
@@ -14412,25 +14597,25 @@ function inputWidget(events, modelAccessor, viewAccessor, initFn, dirtyChecking)
     if (model) {
       initFn.call(scope, model, view, element);
       this.$eval(element.attr('ng:init')||'');
-      // Don't register a handler if we are a button (noopAccessor) and there is no action
-      if (action || modelAccessor !== noopAccessor) {
-        element.bind(events, function (){
+      element.bind(events, function(event){
+        function handler(){
           var value = view.get();
-          if (!dirtyChecking || value != lastValue) {
+          if (!textBox || value != lastValue) {
             model.set(value);
             lastValue = model.get();
             scope.$tryEval(action, element);
-            scope.$root.$eval();
+            $updateView();
           }
-        });
-      }
+        }
+        event.type == 'keydown' ? $defer(handler) : handler();
+      });
       scope.$watch(model.get, function(value){
         if (lastValue !== value) {
           view.set(lastValue = value);
         }
       });
     }
-  };
+  });
 }
 
 function inputWidgetSelector(element){
@@ -14502,7 +14687,8 @@ angularWidget('option', function(){
  * (e.g. ng:include won't work for file:// access).
  *
  * @param {string} src expression evaluating to URL.
- * @param {Scope=} [scope=new_child_scope] expression evaluating to angular.scope
+ * @param {Scope=} [scope=new_child_scope] optional expression which evaluates to an 
+ *                 instance of angular.scope to set the HTML fragment to.
  * @param {string=} onload Expression to evaluate when a new partial is loaded.
  *
  * @example
@@ -14646,7 +14832,7 @@ var ngSwitch = angularWidget('ng:switch', function (element){
     if (isString(when)) {
       switchCase.when = function(scope, value){
         var args = [value, when];
-        foreach(usingExprParams, function(arg){
+        forEach(usingExprParams, function(arg){
           args.push(arg);
         });
         return usingFn.apply(scope, args);
@@ -14659,7 +14845,7 @@ var ngSwitch = angularWidget('ng:switch', function (element){
   });
 
   // this needs to be here for IE
-  foreach(cases, function(_case){
+  forEach(cases, function(_case){
     _case.element.remove();
   });
 
@@ -14670,7 +14856,7 @@ var ngSwitch = angularWidget('ng:switch', function (element){
       var found = false;
       element.html('');
       childScope = createScope(scope);
-      foreach(cases, function(switchCase){
+      forEach(cases, function(switchCase){
         if (!found && switchCase.when(childScope, value)) {
           found = true;
           var caseElement = quickClone(switchCase.element);
@@ -14883,18 +15069,18 @@ var browserSingleton;
  */
 angularService('$browser', function($log){
   if (!browserSingleton) {
-    browserSingleton = new Browser(
-        window.location,
-        jqLite(window.document),
-        jqLite(window.document.getElementsByTagName('head')[0]),
-        XHR,
-        $log,
-        window.setTimeout);
-    browserSingleton.startPoller(50, function(delay, fn){setTimeout(delay,fn);});
+    browserSingleton = new Browser(window, jqLite(window.document), jqLite(window.document.body),
+                                   XHR, $log);
+    var addPollFn = browserSingleton.addPollFn;
+    browserSingleton.addPollFn = function(){
+      browserSingleton.addPollFn = addPollFn;
+      browserSingleton.startPoller(100, function(delay, fn){setTimeout(delay,fn);});
+      return addPollFn.apply(browserSingleton, arguments);
+    };
     browserSingleton.bind();
   }
   return browserSingleton;
-}, {inject:['$log']});
+}, {$inject:['$log']});
 
 extend(angular, {
   'element': jqLite,
@@ -14903,7 +15089,7 @@ extend(angular, {
   'copy': copy,
   'extend': extend,
   'equals': equals,
-  'foreach': foreach,
+  'forEach': forEach,
   'injector': createInjector,
   'noop':noop,
   'bind':bind,
@@ -14959,7 +15145,7 @@ angular.scenario.dsl = angular.scenario.dsl || function(name, fn) {
         return result;
       var self = this;
       var chain = angular.extend({}, result);
-      angular.foreach(chain, function(value, name) {
+      angular.forEach(chain, function(value, name) {
         if (angular.isFunction(value)) {
           chain[name] = function() {
             return executeStatement.call(self, value, arguments);
@@ -15022,7 +15208,7 @@ function angularScenarioInit($scenario, config) {
     output = config.scenario_output.split(',');
   }
 
-  angular.foreach(angular.scenario.output, function(fn, name) {
+  angular.forEach(angular.scenario.output, function(fn, name) {
     if (!output.length || indexOf(output,name) != -1) {
       var context = body.append('<div></div>').find('div:last');
       context.attr('id', name);
@@ -15165,7 +15351,7 @@ function browserTrigger(element, type) {
         'select-multiple': 'change'
     }[element.type] || 'click';
   }
-  if (lowercase(nodeName(element)) == 'option') {
+  if (lowercase(nodeName_(element)) == 'option') {
     element.parentNode.value = element.value;
     element = element.parentNode;
     type = 'change';
@@ -15206,7 +15392,7 @@ function browserTrigger(element, type) {
 (function(fn){
   var parentTrigger = fn.trigger;
   fn.trigger = function(type) {
-    if (/(click|change|keyup)/.test(type)) {
+    if (/(click|change|keydown)/.test(type)) {
       return this.each(function(index, node) {
         browserTrigger(node, type);
       });
@@ -15396,7 +15582,7 @@ angular.scenario.Describe = function(descName, parent) {
   var beforeEachFns = this.beforeEachFns;
   this.setupBefore = function() {
     if (parent) parent.setupBefore.call(this);
-    angular.foreach(beforeEachFns, function(fn) { fn.call(this); }, this);
+    angular.forEach(beforeEachFns, function(fn) { fn.call(this); }, this);
   };
 
   /**
@@ -15404,7 +15590,7 @@ angular.scenario.Describe = function(descName, parent) {
    */
   var afterEachFns = this.afterEachFns;
   this.setupAfter  = function() {
-    angular.foreach(afterEachFns, function(fn) { fn.call(this); }, this);
+    angular.forEach(afterEachFns, function(fn) { fn.call(this); }, this);
     if (parent) parent.setupAfter.call(this);
   };
 };
@@ -15508,14 +15694,14 @@ angular.scenario.Describe.prototype.xit = angular.noop;
  */
 angular.scenario.Describe.prototype.getSpecs = function() {
   var specs = arguments[0] || [];
-  angular.foreach(this.children, function(child) {
+  angular.forEach(this.children, function(child) {
     child.getSpecs(specs);
   });
-  angular.foreach(this.its, function(it) {
+  angular.forEach(this.its, function(it) {
     specs.push(it);
   });
   var only = [];
-  angular.foreach(specs, function(it) {
+  angular.forEach(specs, function(it) {
     if (it.only) {
       only.push(it);
     }
@@ -15605,7 +15791,7 @@ angular.scenario.ObjectModel = function(runner) {
 
   runner.on('SpecBegin', function(spec) {
     var block = self.value;
-    angular.foreach(self.getDefinitionPath(spec), function(def) {
+    angular.forEach(self.getDefinitionPath(spec), function(def) {
       if (!block.children[def.name]) {
         block.children[def.name] = {
           id: def.id,
@@ -15760,7 +15946,7 @@ angular.scenario.Describe = function(descName, parent) {
   var beforeEachFns = this.beforeEachFns;
   this.setupBefore = function() {
     if (parent) parent.setupBefore.call(this);
-    angular.foreach(beforeEachFns, function(fn) { fn.call(this); }, this);
+    angular.forEach(beforeEachFns, function(fn) { fn.call(this); }, this);
   };
 
   /**
@@ -15768,7 +15954,7 @@ angular.scenario.Describe = function(descName, parent) {
    */
   var afterEachFns = this.afterEachFns;
   this.setupAfter  = function() {
-    angular.foreach(afterEachFns, function(fn) { fn.call(this); }, this);
+    angular.forEach(afterEachFns, function(fn) { fn.call(this); }, this);
     if (parent) parent.setupAfter.call(this);
   };
 };
@@ -15872,14 +16058,14 @@ angular.scenario.Describe.prototype.xit = angular.noop;
  */
 angular.scenario.Describe.prototype.getSpecs = function() {
   var specs = arguments[0] || [];
-  angular.foreach(this.children, function(child) {
+  angular.forEach(this.children, function(child) {
     child.getSpecs(specs);
   });
-  angular.foreach(this.its, function(it) {
+  angular.forEach(this.its, function(it) {
     specs.push(it);
   });
   var only = [];
-  angular.foreach(specs, function(it) {
+  angular.forEach(specs, function(it) {
     if (it.only) {
       only.push(it);
     }
@@ -15904,7 +16090,7 @@ angular.scenario.Runner = function($window) {
     beforeEach: this.beforeEach,
     afterEach: this.afterEach
   };
-  angular.foreach(this.api, angular.bind(this, function(fn, key) {
+  angular.forEach(this.api, angular.bind(this, function(fn, key) {
     this.$window[key] = angular.bind(this, fn);
   }));
 };
@@ -15921,7 +16107,7 @@ angular.scenario.Runner.prototype.emit = function(eventName) {
   eventName = eventName.toLowerCase();
   if (!this.listeners[eventName])
     return;
-  angular.foreach(this.listeners[eventName], function(listener) {
+  angular.forEach(this.listeners[eventName], function(listener) {
     listener.apply(self, args);
   });
 };
@@ -16052,17 +16238,17 @@ angular.scenario.Runner.prototype.run = function(application) {
   asyncForEach(this.rootDescribe.getSpecs(), function(spec, specDone) {
     var dslCache = {};
     var runner = self.createSpecRunner_($root);
-    angular.foreach(angular.scenario.dsl, function(fn, key) {
+    angular.forEach(angular.scenario.dsl, function(fn, key) {
       dslCache[key] = fn.call($root);
     });
-    angular.foreach(angular.scenario.dsl, function(fn, key) {
+    angular.forEach(angular.scenario.dsl, function(fn, key) {
       self.$window[key] = function() {
         var line = callerFile(3);
         var scope = angular.scope(runner);
 
         // Make the dsl accessible on the current chain
         scope.dsl = {};
-        angular.foreach(dslCache, function(fn, key) {
+        angular.forEach(dslCache, function(fn, key) {
           scope.dsl[key] = function() {
             return dslCache[key].apply(scope, arguments);
           };
@@ -16206,7 +16392,7 @@ angular.scenario.SpecRunner.prototype.addFutureAction = function(name, behavior,
         var args = Array.prototype.slice.call(arguments, 1);
         selector = (self.selector || '') + ' ' + (selector || '');
         selector = _jQuery.trim(selector) || '*';
-        angular.foreach(args, function(value, index) {
+        angular.forEach(args, function(value, index) {
           selector = selector.replace('$' + (index + 1), value);
         });
         var result = $document.find(selector);
@@ -16565,7 +16751,7 @@ angular.scenario.dsl('element', function() {
     });
   };
 
-  angular.foreach(KEY_VALUE_METHODS, function(methodName) {
+  angular.forEach(KEY_VALUE_METHODS, function(methodName) {
     chain[methodName] = function(name, value) {
       var futureName = "element '" + this.label + "' get " + methodName + " '" + name + "'";
       if (angular.isDefined(value)) {
@@ -16578,7 +16764,7 @@ angular.scenario.dsl('element', function() {
     };
   });
 
-  angular.foreach(VALUE_METHODS, function(methodName) {
+  angular.forEach(VALUE_METHODS, function(methodName) {
     chain[methodName] = function(value) {
       var futureName = "element '" + this.label + "' " + methodName;
       if (angular.isDefined(value)) {
@@ -16762,7 +16948,7 @@ angular.scenario.output('html', function(context, runner) {
    */
   function findContext(spec) {
     var currentContext = context.find('#specs');
-    angular.foreach(model.getDefinitionPath(spec), function(defn) {
+    angular.forEach(model.getDefinitionPath(spec), function(defn) {
       var id = 'describe-' + defn.id;
       if (!context.find('#' + id).length) {
         currentContext.find('> .test-children').append(
@@ -16833,7 +17019,7 @@ angular.scenario.output('xml', function(context, runner) {
    * @param {Object} tree node to serialize
    */
   function serializeXml(context, tree) {
-     angular.foreach(tree.children, function(child) {
+     angular.forEach(tree.children, function(child) {
        var describeContext = $('<describe></describe>');
        describeContext.attr('id', child.id);
        describeContext.attr('name', child.name);
@@ -16842,14 +17028,14 @@ angular.scenario.output('xml', function(context, runner) {
      });
      var its = $('<its></its>');
      context.append(its);
-     angular.foreach(tree.specs, function(spec) {
+     angular.forEach(tree.specs, function(spec) {
        var it = $('<it></it>');
        it.attr('id', spec.id);
        it.attr('name', spec.name);
        it.attr('duration', spec.duration);
        it.attr('status', spec.status);
        its.append(it);
-       angular.foreach(spec.steps, function(step) {
+       angular.forEach(spec.steps, function(step) {
          var stepContext = $('<step></step>');
          stepContext.attr('name', step.name);
          stepContext.attr('duration', step.duration);
@@ -16872,13 +17058,10 @@ angular.scenario.output('object', function(context, runner) {
 });
   var $scenario = new angular.scenario.Runner(window);
 
-  window.onload = function() {
-    try {
-      if (previousOnLoad) previousOnLoad();
-    } catch(e) {}
+  jqLite(document).ready(function() {
     angularScenarioInit($scenario, angularJsConfig(document));
-  };
+  });
 
-})(window, document, window.onload);
+})(window, document);
 document.write('<style type="text/css">@charset "UTF-8";\n\n.ng-format-negative {\n  color: red;\n}\n\n.ng-exception {\n  border: 2px solid #FF0000;\n  font-family: "Courier New", Courier, monospace;\n  font-size: smaller;\n  white-space: pre;\n}\n\n.ng-validation-error {\n  border: 2px solid #FF0000;\n}\n\n\n/*****************\n * TIP\n *****************/\n#ng-callout {\n  margin: 0;\n  padding: 0;\n  border: 0;\n  outline: 0;\n  font-size: 13px;\n  font-weight: normal;\n  font-family: Verdana, Arial, Helvetica, sans-serif;\n  vertical-align: baseline;\n  background: transparent;\n  text-decoration: none;\n}\n\n#ng-callout .ng-arrow-left{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrSLoc/AG8FeUUIN+sGebWAnbKSJodqqlsOxJtqYooU9vvk+vcJIcTkg+QAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  left:-12px;\n  height:23px;\n  width:10px;\n  top:-3px;\n}\n\n#ng-callout .ng-arrow-right{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrCLTcoM29yN6k9socs91e5X3EyJloipYrO4ohTMqA0Fn2XVNswJe+H+SXAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  height:23px;\n  width:11px;\n    top:-2px;\n}\n\n#ng-callout {\n  position: absolute;\n  z-index:100;\n  border: 2px solid #CCCCCC;\n  background-color: #fff;\n}\n\n#ng-callout .ng-content{\n  padding:10px 10px 10px 10px;\n  color:#333333;\n}\n\n#ng-callout .ng-title{\n  background-color: #CCCCCC;\n  text-align: left;\n  padding-left: 8px;\n  padding-bottom: 5px;\n  padding-top: 2px;\n  font-weight:bold;\n}\n\n\n/*****************\n * indicators\n *****************/\n.ng-input-indicator-wait {\n  background-image: url("data:image/png;base64,R0lGODlhEAAQAPQAAP///wAAAPDw8IqKiuDg4EZGRnp6egAAAFhYWCQkJKysrL6+vhQUFJycnAQEBDY2NmhoaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh/hpDcmVhdGVkIHdpdGggYWpheGxvYWQuaW5mbwAh+QQJCgAAACwAAAAAEAAQAAAFdyAgAgIJIeWoAkRCCMdBkKtIHIngyMKsErPBYbADpkSCwhDmQCBethRB6Vj4kFCkQPG4IlWDgrNRIwnO4UKBXDufzQvDMaoSDBgFb886MiQadgNABAokfCwzBA8LCg0Egl8jAggGAA1kBIA1BAYzlyILczULC2UhACH5BAkKAAAALAAAAAAQABAAAAV2ICACAmlAZTmOREEIyUEQjLKKxPHADhEvqxlgcGgkGI1DYSVAIAWMx+lwSKkICJ0QsHi9RgKBwnVTiRQQgwF4I4UFDQQEwi6/3YSGWRRmjhEETAJfIgMFCnAKM0KDV4EEEAQLiF18TAYNXDaSe3x6mjidN1s3IQAh+QQJCgAAACwAAAAAEAAQAAAFeCAgAgLZDGU5jgRECEUiCI+yioSDwDJyLKsXoHFQxBSHAoAAFBhqtMJg8DgQBgfrEsJAEAg4YhZIEiwgKtHiMBgtpg3wbUZXGO7kOb1MUKRFMysCChAoggJCIg0GC2aNe4gqQldfL4l/Ag1AXySJgn5LcoE3QXI3IQAh+QQJCgAAACwAAAAAEAAQAAAFdiAgAgLZNGU5joQhCEjxIssqEo8bC9BRjy9Ag7GILQ4QEoE0gBAEBcOpcBA0DoxSK/e8LRIHn+i1cK0IyKdg0VAoljYIg+GgnRrwVS/8IAkICyosBIQpBAMoKy9dImxPhS+GKkFrkX+TigtLlIyKXUF+NjagNiEAIfkECQoAAAAsAAAAABAAEAAABWwgIAICaRhlOY4EIgjH8R7LKhKHGwsMvb4AAy3WODBIBBKCsYA9TjuhDNDKEVSERezQEL0WrhXucRUQGuik7bFlngzqVW9LMl9XWvLdjFaJtDFqZ1cEZUB0dUgvL3dgP4WJZn4jkomWNpSTIyEAIfkECQoAAAAsAAAAABAAEAAABX4gIAICuSxlOY6CIgiD8RrEKgqGOwxwUrMlAoSwIzAGpJpgoSDAGifDY5kopBYDlEpAQBwevxfBtRIUGi8xwWkDNBCIwmC9Vq0aiQQDQuK+VgQPDXV9hCJjBwcFYU5pLwwHXQcMKSmNLQcIAExlbH8JBwttaX0ABAcNbWVbKyEAIfkECQoAAAAsAAAAABAAEAAABXkgIAICSRBlOY7CIghN8zbEKsKoIjdFzZaEgUBHKChMJtRwcWpAWoWnifm6ESAMhO8lQK0EEAV3rFopIBCEcGwDKAqPh4HUrY4ICHH1dSoTFgcHUiZjBhAJB2AHDykpKAwHAwdzf19KkASIPl9cDgcnDkdtNwiMJCshACH5BAkKAAAALAAAAAAQABAAAAV3ICACAkkQZTmOAiosiyAoxCq+KPxCNVsSMRgBsiClWrLTSWFoIQZHl6pleBh6suxKMIhlvzbAwkBWfFWrBQTxNLq2RG2yhSUkDs2b63AYDAoJXAcFRwADeAkJDX0AQCsEfAQMDAIPBz0rCgcxky0JRWE1AmwpKyEAIfkECQoAAAAsAAAAABAAEAAABXkgIAICKZzkqJ4nQZxLqZKv4NqNLKK2/Q4Ek4lFXChsg5ypJjs1II3gEDUSRInEGYAw6B6zM4JhrDAtEosVkLUtHA7RHaHAGJQEjsODcEg0FBAFVgkQJQ1pAwcDDw8KcFtSInwJAowCCA6RIwqZAgkPNgVpWndjdyohACH5BAkKAAAALAAAAAAQABAAAAV5ICACAimc5KieLEuUKvm2xAKLqDCfC2GaO9eL0LABWTiBYmA06W6kHgvCqEJiAIJiu3gcvgUsscHUERm+kaCxyxa+zRPk0SgJEgfIvbAdIAQLCAYlCj4DBw0IBQsMCjIqBAcPAooCBg9pKgsJLwUFOhCZKyQDA3YqIQAh+QQJCgAAACwAAAAAEAAQAAAFdSAgAgIpnOSonmxbqiThCrJKEHFbo8JxDDOZYFFb+A41E4H4OhkOipXwBElYITDAckFEOBgMQ3arkMkUBdxIUGZpEb7kaQBRlASPg0FQQHAbEEMGDSVEAA1QBhAED1E0NgwFAooCDWljaQIQCE5qMHcNhCkjIQAh+QQJCgAAACwAAAAAEAAQAAAFeSAgAgIpnOSoLgxxvqgKLEcCC65KEAByKK8cSpA4DAiHQ/DkKhGKh4ZCtCyZGo6F6iYYPAqFgYy02xkSaLEMV34tELyRYNEsCQyHlvWkGCzsPgMCEAY7Cg04Uk48LAsDhRA8MVQPEF0GAgqYYwSRlycNcWskCkApIyEAOwAAAAAAAAAAAA==");\n  background-position: right;\n  background-repeat: no-repeat;\n}\n</style>');
 document.write('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#system-error {\n  font-size: 1.5em;\n  text-align: center;\n}\n\n#json, #xml {\n  display: none;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#application h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#application,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#application {\n  margin: 10px;\n}\n\n#application iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#application .popout {\n  float: right;\n}\n\n#application iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe {\n  padding-bottom: 0.5em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#application h2 {\n  background-color: #efefef;\n}\n\n#application {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');

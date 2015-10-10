@@ -63,7 +63,24 @@ function MockBrowser() {
 
   this.isMock = true;
   self.url = "http://server";
+  self.lastUrl = self.url; // used by url polling fn
   self.pollFns = [];
+
+
+  // register url polling fn
+
+  self.onHashChange = function(listener) {
+    self.pollFns.push(
+      function() {
+        if (self.lastUrl != self.url) {
+          listener();
+        }
+      }
+    );
+
+    return listener;
+  };
+
 
   self.xhr = function(method, url, data, callback) {
     if (angular.isFunction(data)) {
@@ -126,7 +143,7 @@ function MockBrowser() {
 MockBrowser.prototype = {
 
   poll: function poll(){
-    angular.foreach(this.pollFns, function(pollFn){
+    angular.forEach(this.pollFns, function(pollFn){
       pollFn();
     });
   },
@@ -289,7 +306,7 @@ function TzDate(offset, timestamp) {
       'setYear', 'toDateString', 'toJSON', 'toGMTString', 'toLocaleFormat', 'toLocaleString',
       'toLocaleTimeString', 'toSource', 'toString', 'toTimeString', 'toUTCString', 'valueOf'];
 
-  angular.foreach(unimplementedMethods, function(methodName) {
+  angular.forEach(unimplementedMethods, function(methodName) {
     this[methodName] = function() {
       throw {
         name: "MethodNotImplemented",
