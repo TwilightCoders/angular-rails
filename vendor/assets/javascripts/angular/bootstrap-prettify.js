@@ -1,5 +1,5 @@
 /**
- * @license AngularJS v1.0.0rc8
+ * @license AngularJS v1.0.0rc9
  * (c) 2010-2012 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -25,6 +25,17 @@ function escape(text) {
     replace(/"/g, '&quot;');
 }
 
+/**
+ * http://stackoverflow.com/questions/451486/pre-tag-loses-line-breaks-when-setting-innerhtml-in-ie
+ * http://stackoverflow.com/questions/195363/inserting-a-newline-into-a-pre-tag-ie-javascript
+ */
+function setHtmlIe8SafeWay(element, html) {
+  var newElement = angular.element('<pre>' + html + '</pre>');
+
+  element.html('');
+  element.append(newElement.contents());
+  return element;
+}
 
 
 directive.jsFiddle = function(getEmbeddedTemplate, escape, script) {
@@ -60,7 +71,7 @@ directive.jsFiddle = function(getEmbeddedTemplate, escape, script) {
 
       fields.html += '</div>\n';
 
-      element.html(
+      setHtmlIe8SafeWay(element,
         '<form class="jsfiddle" method="post" action="http://jsfiddle.net/api/post/library/pure/" target="_blank">' +
           hiddenField('title', 'AngularJS Example: ' + name) +
           hiddenField('css', '</style> <!-- Ugly Hack due to jsFiddle issue: http://goo.gl/BUfGZ --> \n' +
@@ -103,7 +114,7 @@ directive.ngSetText = ['getEmbeddedTemplate', function(getEmbeddedTemplate) {
     restrict: 'CA',
     priority: 10,
     compile: function(element, attr) {
-      element.text(getEmbeddedTemplate(attr.ngSetText));
+      setHtmlIe8SafeWay(element, escape(getEmbeddedTemplate(attr.ngSetText)));
     }
   }
 }]
@@ -115,9 +126,9 @@ directive.ngHtmlWrap = ['reindentCode', 'templateMerge', function(reindentCode, 
       var properties = {
             head: '',
             module: '',
-            body: reindentCode(element.text(), 4)
+            body: element.text()
           },
-        html = "<!doctype html>\n<html ng-app{{module}}>\n  <head>\n{{head}}  </head>\n  <body>\n{{body}}  </body>\n</html>";
+        html = "<!doctype html>\n<html ng-app{{module}}>\n  <head>\n{{head:4}}  </head>\n  <body>\n{{body:4}}  </body>\n</html>";
 
       angular.forEach((attr.ngHtmlWrap || '').split(' '), function(dep) {
         if (!dep) return;
@@ -126,15 +137,15 @@ directive.ngHtmlWrap = ['reindentCode', 'templateMerge', function(reindentCode, 
         var ext = dep.split(/\./).pop();
 
         if (ext == 'css') {
-          properties.head += '    <link rel="stylesheet" href="' + dep + '" type="text/css">\n';
+          properties.head += '<link rel="stylesheet" href="' + dep + '" type="text/css">\n';
         } else if(ext == 'js') {
-          properties.head += '    <script src="' + dep + '"></script>\n';
+          properties.head += '<script src="' + dep + '"></script>\n';
         } else {
           properties.module = '="' + dep + '"';
         }
       });
 
-      element.text(templateMerge(html, properties));
+      setHtmlIe8SafeWay(element, escape(templateMerge(html, properties)));
     }
   }
 }];
@@ -145,7 +156,7 @@ directive.ngSetHtml = ['getEmbeddedTemplate', function(getEmbeddedTemplate) {
     restrict: 'CA',
     priority: 10,
     compile: function(element, attr) {
-      element.html(getEmbeddedTemplate(attr.ngSetHtml));
+      setHtmlIe8SafeWay(element, getEmbeddedTemplate(attr.ngSetHtml));
     }
   }
 }];
@@ -262,7 +273,13 @@ service.templateMerge = ['reindentCode', function(indentCode) {
 
 service.getEmbeddedTemplate = ['reindentCode', function(reindentCode) {
   return function (id) {
-    return reindentCode(angular.element(document.getElementById(id)).html(), 0);
+    var element = document.getElementById(id);
+
+    if (!element) {
+      return null;
+    }
+
+    return reindentCode(angular.element(element).html(), 0);
   }
 }];
 
@@ -1620,11 +1637,13 @@ var REGEXP_PRECEDER_PATTERN = '(?:^^\\.?|[+-]|[!=]=?=?|\\#|%=?|&&?=?|\\(|\\*=?|[
    *     or the 1-indexed number of the first line in sourceCodeHtml.
    */
   function prettyPrintOne(sourceCodeHtml, opt_langExtension, opt_numberLines) {
-    var container = document.createElement('pre');
+    // PATCHED: http://code.google.com/p/google-code-prettify/issues/detail?id=213
+    var container = document.createElement('div');
     // This could cause images to load and onload listeners to fire.
     // E.g. <img onerror="alert(1337)" src="nosuchimage.png">.
     // We assume that the inner HTML is from a trusted source.
-    container.innerHTML = sourceCodeHtml;
+    container.innerHTML = '<pre>' + sourceCodeHtml + '</pre>';
+    container = container.firstChild;
     if (opt_numberLines) {
       numberLines(container, opt_numberLines, true);
     }
