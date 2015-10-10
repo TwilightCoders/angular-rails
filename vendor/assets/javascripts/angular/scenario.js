@@ -6268,9 +6268,30 @@ window.jQuery = window.$ = jQuery;
 if (typeof document.getAttribute == $undefined)
   document.getAttribute = function() {};
 
-//The below may not be true on browsers in the Turkish locale.
+/**
+ * @ngdoc
+ * @name angular.lowercase
+ * @function
+ *
+ * @description Converts string to lowercase
+ * @param {string} value
+ * @returns {string} Lowercased string.
+ */
 var lowercase = function (value){ return isString(value) ? value.toLowerCase() : value; };
+
+
+/**
+ * @ngdoc
+ * @name angular#uppercase
+ * @function
+ *
+ * @description Converts string to uppercase.
+ * @param {string} value
+ * @returns {string} Uppercased string.
+ */
 var uppercase = function (value){ return isString(value) ? value.toUpperCase() : value; };
+
+
 var manualLowercase = function (s) {
   return isString(s) ? s.replace(/[A-Z]/g,
       function (ch) {return fromCharCode(ch.charCodeAt(0) | 32); }) : s;
@@ -6279,9 +6300,14 @@ var manualUppercase = function (s) {
   return isString(s) ? s.replace(/[a-z]/g,
       function (ch) {return fromCharCode(ch.charCodeAt(0) & ~32); }) : s;
 };
+
+
+// String#toLowerCase and String#toUpperCase don't produce correct results in browsers with Turkish
+// locale, for this reason we need to detect this case and redefine lowercase/uppercase methods with
+// correct but slower alternatives.
 if ('i' !== 'I'.toLowerCase()) {
   lowercase = manualLowercase;
-  uppercase = manulaUppercase;
+  uppercase = manualUppercase;
 }
 
 function fromCharCode(code) { return String.fromCharCode(code); }
@@ -6322,12 +6348,99 @@ var _undefined        = undefined,
     slice             = Array.prototype.slice,
     push              = Array.prototype.push,
     error             = window[$console] ? bind(window[$console], window[$console]['error'] || noop) : noop,
+
+    /**
+     * @name angular
+     * @namespace The exported angular namespace.
+     */
     angular           = window[$angular]    || (window[$angular] = {}),
     angularTextMarkup = extensionMap(angular, 'markup'),
     angularAttrMarkup = extensionMap(angular, 'attrMarkup'),
     angularDirective  = extensionMap(angular, 'directive'),
     angularWidget     = extensionMap(angular, 'widget', lowercase),
     angularValidator  = extensionMap(angular, 'validator'),
+
+
+    /**
+     * @ngdoc overview
+     * @name angular.filter
+     * @namespace Namespace for all filters.
+     * @description
+     * # Overview
+     * Filters are a standard way to format your data for display to the user. For example, you
+     * might have the number 1234.5678 and would like to display it as US currency: $1,234.57.
+     * Filters allow you to do just that. In addition to transforming the data, filters also modify
+     * the DOM. This allows the filters to for example apply css styles to the filtered output if
+     * certain conditions were met.
+     *
+     *
+     * # Standard Filters
+     *
+     * The Angular framework provides a standard set of filters for common operations, including:
+     * {@link angular.filter.currency}, {@link angular.filter.json}, {@link angular.filter.number},
+     * and {@link angular.filter.html}. You can also add your own filters.
+     *
+     *
+     * # Syntax
+     *
+     * Filters can be part of any {@link angular.scope} evaluation but are typically used with
+     * {{bindings}}. Filters typically transform the data to a new data type, formating the data in
+     * the process. Filters can be chained and take optional arguments. Here are few examples:
+     *
+     * * No filter: {{1234.5678}} => 1234.5678
+     * * Number filter: {{1234.5678|number}} => 1,234.57. Notice the “,” and rounding to two
+     *   significant digits.
+     * * Filter with arguments: {{1234.5678|number:5}} => 1,234.56780. Filters can take optional
+     *   arguments, separated by colons in a binding. To number, the argument “5” requests 5 digits
+     *   to the right of the decimal point.
+     *
+     *
+     * # Writing your own Filters
+     *
+     * Writing your own filter is very easy: just define a JavaScript function on `angular.filter`.
+     * The framework passes in the input value as the first argument to your function. Any filter
+     * arguments are passed in as additional function arguments.
+     *
+     * You can use these variables in the function:
+     *
+     * * `this` — The current scope.
+     * * `$element` — The DOM element containing the binding. This allows the filter to manipulate
+     *   the DOM in addition to transforming the input.
+     *
+     *
+     * @example
+     *   //TODO this example current doesn't show up anywhere because the overview template doesn't
+     *   //     render it.
+     *
+     *   The following example filter reverses a text string. In addition, it conditionally makes the
+     *   text upper-case (to demonstrate optional arguments) and assigns color (to demonstrate DOM
+     *   modification).
+
+         <script type="text/javascript">
+           angular.filter.reverse = function(input, uppercase, color) {
+             var out = "";
+             for (var i = 0; i < input.length; i++) {
+               out = input.charAt(i) + out;
+             }
+             if (uppercase) {
+               out = out.toUpperCase();
+             }
+             if (color) {
+               this.$element.css('color', color);
+             }
+             return out;
+           };
+         </script>
+         <span ng:non-bindable="true">{{"hello"|reverse}}</span>: {{"hello"|reverse}}<br>
+         <span ng:non-bindable="true">{{"hello"|reverse:true}}</span>: {{"hello"|reverse:true}}<br>
+         <span ng:non-bindable="true">{{"hello"|reverse:true:"blue"}}</span>:
+           {{"hello"|reverse:true:"blue"}}
+
+     * //TODO: I completely dropped a mention of using the other option (setter method), it's
+     * confusing to have two ways to do the same thing. I just wonder if we should prefer using the
+     * setter way over direct assignment because in the future we might want to be able to intercept
+     * filter registrations for some reason.
+     */
     angularFilter     = extensionMap(angular, 'filter'),
     angularFormatter  = extensionMap(angular, 'formatter'),
     angularService    = extensionMap(angular, 'service'),
@@ -6520,7 +6633,7 @@ function isLeafNode (node) {
  * @param {*} source The source to be used during copy.
  *                   Can be any type including primitives, null and undefined.
  * @param {(Object|Array)=} destination Optional destination into which the source is copied
- * @return {*}
+ * @returns {*}
  */
 function copy(source, destination){
   if (!destination) {
@@ -6663,7 +6776,7 @@ function compile(element, existingScope) {
 
 /**
  * Parses an escaped url query string into key-value pairs.
- * @return Object.<(string|boolean)>
+ * @returns Object.<(string|boolean)>
  */
 function parseKeyValue(/**string*/keyValue) {
   var obj = {}, key_value, key;
@@ -6758,6 +6871,8 @@ function toJsonArray(buf, obj, pretty, stack){
   var type = typeof obj;
   if (obj === _null) {
     buf.push($null);
+  } else if (obj instanceof RegExp) {
+    buf.push(angular['String']['quoteUnicode'](obj.toString()));
   } else if (type === $function) {
     return;
   } else if (type === $boolean) {
@@ -6778,7 +6893,7 @@ function toJsonArray(buf, obj, pretty, stack){
       for(var i=0; i<len; i++) {
         var item = obj[i];
         if (sep) buf.push(",");
-        if (typeof item == $function || typeof item == $undefined) {
+        if (!(item instanceof RegExp) && (typeof item == $function || typeof item == $undefined)) {
           buf.push($null);
         } else {
           toJsonArray(buf, item, pretty, stack);
@@ -6935,9 +7050,11 @@ Compiler.prototype = {
   templatize: function(element, elementIndex, priority){
     var self = this,
         widget,
+        fn,
         directiveFns = self.directives,
         descend = true,
         directives = true,
+        elementName = nodeName(element),
         template,
         selfApi = {
           compile: bind(self, self.compile),
@@ -6961,12 +7078,15 @@ Compiler.prototype = {
     eachAttribute(element, function(value, name){
       if (!widget) {
         if (widget = self.widgets('@' + name)) {
+          element.addClass('ng-attr-widget');
           widget = bind(selfApi, widget, value, element);
         }
       }
     });
     if (!widget) {
-      if (widget = self.widgets(nodeName(element))) {
+      if (widget = self.widgets(elementName)) {
+        if (elementName.indexOf(':') > 0)
+          element.addClass('ng-widget');
         widget = bind(selfApi, widget, element);
       }
     }
@@ -7002,7 +7122,11 @@ Compiler.prototype = {
         });
       });
       eachAttribute(element, function(value, name){
-        template.addInit((directiveFns[name]||noop).call(selfApi, value, element));
+        fn = directiveFns[name];
+        if (fn) {
+          element.addClass('ng-directive');
+          template.addInit((directiveFns[name]).call(selfApi, value, element));
+        }
       });
     }
     // Process non text child nodes
@@ -7089,11 +7213,11 @@ var scopeId = 0,
     compileCache = {},
     JS_KEYWORDS = {};
 foreach(
-   ["abstract", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "debugger", "default",
-    "delete", "do", "double", "else", "enum", "export", "extends", "false", "final", "finally", "float", "for", $function, "goto",
-    "if", "implements", "import", "ininstanceof", "intinterface", "long", "native", "new", $null, "package", "private",
-    "protected", "public", "return", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws",
-    "transient", "true", "try", "typeof", "var", "volatile", "void", $undefined, "while", "with"],
+    ("abstract,boolean,break,byte,case,catch,char,class,const,continue,debugger,default," +
+    "delete,do,double,else,enum,export,extends,false,final,finally,float,for,function,goto," +
+    "if,implements,import,ininstanceof,intinterface,long,native,new,null,package,private," +
+    "protected,public,return,short,static,super,switch,synchronized,this,throw,throws," +
+    "transient,true,try,typeof,var,volatile,void,undefined,while,with").split(/,/),
   function(key){ JS_KEYWORDS[key] = true;}
 );
 function getterFn(path){
@@ -9157,20 +9281,77 @@ defineApi('Date', [angularGlobal, angularDate]);
 //IE bug
 angular['Date']['toString'] = angularDate['toString'];
 defineApi('Function', [angularGlobal, angularCollection, angularFunction]);
+/**
+ * @ngdoc filter
+ * @name angular.filter.currency
+ * @function
+ *
+ * @description
+ *   Formats a number as a currency (ie $1,234.56).
+ *
+ * @param {number} amount Input to filter.
+ * @returns {string} Formated number.
+ *
+ * @css ng-format-negative
+ *   When the value is negative, this css class is applied to the binding making it by default red.
+ *
+ * @example
+     <input type="text" name="amount" value="1234.56"/> <br/>
+     {{amount | currency}}
+ *
+ * @scenario
+     it('should init with 1234.56', function(){
+       expect(binding('amount | currency')).toBe('$1,234.56');
+     });
+     it('should update', function(){
+       input('amount').enter('-1234');
+       expect(binding('amount | currency')).toBe('$-1,234.00');
+       // TODO: implement
+       // expect(binding('amount')).toHaveColor('red'); //what about toHaveCssClass instead?
+     });
+ */
 angularFilter.currency = function(amount){
   this.$element.toggleClass('ng-format-negative', amount < 0);
   return '$' + angularFilter['number'].apply(this, [amount, 2]);
 };
 
-angularFilter.number = function(amount, fractionSize){
-  if (isNaN(amount) || !isFinite(amount)) {
+/**
+ * @ngdoc filter
+ * @name angular.filter.number
+ * @function
+ *
+ * @description
+ *   Formats a number as text.
+ *
+ *   If the input is not a number empty string is returned.
+ *
+ * @param {(number|string)} number Number to format.
+ * @param {(number|string)=} [fractionSize=2] Number of decimal places to round the number to. Default 2.
+ * @returns {string} Number rounded to decimalPlaces and places a “,” after each third digit.
+ *
+ * @example
+     <span ng:non-bindable>{{1234.56789 | number}}</span>: {{1234.56789 | number}}<br/>
+     <span ng:non-bindable>{{1234.56789 | number:0}}</span>: {{1234.56789 | number:0}}<br/>
+     <span ng:non-bindable>{{1234.56789 | number:2}}</span>: {{1234.56789 | number:2}}<br/>
+     <span ng:non-bindable>{{-1234.56789 | number:4}}</span>: {{-1234.56789 | number:4}}
+ *
+ * @scenario
+     it('should format numbers', function(){
+       expect(binding('1234.56789 | number')).toBe('1,234.57');
+       expect(binding('1234.56789 | number:0')).toBe('1,235');
+       expect(binding('1234.56789 | number:2')).toBe('1,234.57');
+       expect(binding('-1234.56789 | number:4')).toBe('-1,234.5679');
+     });
+ */
+angularFilter.number = function(number, fractionSize){
+  if (isNaN(number) || !isFinite(number)) {
     return '';
   }
   fractionSize = typeof fractionSize == $undefined ? 2 : fractionSize;
-  var isNegative = amount < 0;
-  amount = Math.abs(amount);
+  var isNegative = number < 0;
+  number = Math.abs(number);
   var pow = Math.pow(10, fractionSize);
-  var text = "" + Math.round(amount * pow);
+  var text = "" + Math.round(number * pow);
   var whole = text.substring(0, text.length - fractionSize);
   whole = whole || '0';
   var frc = text.substring(text.length - fractionSize);
@@ -9189,6 +9370,8 @@ angularFilter.number = function(amount, fractionSize){
   }
   return text;
 };
+
+
 function padNumber(num, digits, trim) {
   var neg = '';
   if (num < 0) {
@@ -9201,6 +9384,8 @@ function padNumber(num, digits, trim) {
     num = num.substr(num.length - digits);
   return neg + num;
 }
+
+
 function dateGetter(name, size, offset, trim) {
   return function(date) {
     var value = date['get' + name]();
@@ -9210,6 +9395,8 @@ function dateGetter(name, size, offset, trim) {
     return padNumber(value, size, trim);
   };
 }
+
+
 var DATE_FORMATS = {
   yyyy: dateGetter('FullYear', 4),
   yy:   dateGetter('FullYear', 2, 0, true),
@@ -9225,15 +9412,64 @@ var DATE_FORMATS = {
    m:   dateGetter('Minutes', 1),
   ss:   dateGetter('Seconds', 2),
    s:   dateGetter('Seconds', 1),
-  a:    function(date){return date.getHours() < 12 ? 'am' : 'pm'; },
+  a:    function(date){return date.getHours() < 12 ? 'am' : 'pm';},
   Z:    function(date){
           var offset = date.getTimezoneOffset();
           return padNumber(offset / 60, 2) + padNumber(Math.abs(offset % 60), 2);
         }
 };
+
+
 var DATE_FORMATS_SPLIT = /([^yMdHhmsaZ]*)(y+|M+|d+|H+|h+|m+|s+|a|Z)(.*)/;
 var NUMBER_STRING = /^\d+$/;
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.date
+ * @function
+ *
+ * @description
+ *   Formats `date` to a string based on the requested `format`.
+ *
+ *   `format` string can be composed of the following elements:
+ *
+ *   * `'yyyy'`: 4 digit representation of year e.g. 2010
+ *   * `'yy'`: 2 digit representation of year, padded (00-99)
+ *   * `'MM'`: Month in year, padded (01‒12)
+ *   * `'M'`: Month in year (1‒12)
+ *   * `'dd'`: Day in month, padded (01‒31)
+ *   * `'d'`: Day in month (1-31)
+ *   * `'HH'`: Hour in day, padded (00‒23)
+ *   * `'H'`: Hour in day (0-23)
+ *   * `'hh'`: Hour in am/pm, padded (01‒12)
+ *   * `'h'`: Hour in am/pm, (1-12)
+ *   * `'mm'`: Minute in hour, padded (00‒59)
+ *   * `'m'`: Minute in hour (0-59)
+ *   * `'ss'`: Second in minute, padded (00‒59)
+ *   * `'s'`: Second in minute (0‒59)
+ *   * `'a'`: am/pm marker
+ *   * `'Z'`: 4 digit (+sign) representation of the timezone offset (-1200‒1200)
+ *
+ * @param {(Date|number|string)} date Date to format either as Date object or milliseconds.
+ * @param {string=} format Formatting rules. If not specified, Date#toLocaleDateString is used.
+ * @returns {string} Formatted string or the input if input is not recognized as date/millis.
+ *
+ * @example
+     <span ng:non-bindable>{{1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'}}</span>:
+        {{1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'}}<br/>
+     <span ng:non-bindable>{{1288323623006 | date:'MM/dd/yyyy @ h:mma'}}</span>:
+        {{'1288323623006' | date:'MM/dd/yyyy @ h:mma'}}<br/>
+ *
+ * @scenario
+     it('should format date', function(){
+       expect(binding("1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'")).
+          toMatch(/2010\-10\-2\d \d{2}:\d{2}:\d{2} \-?\d{4}/);
+       expect(binding("'1288323623006' | date:'MM/dd/yyyy @ h:mma'")).
+          toMatch(/10\/2\d\/2010 @ \d{1,2}:\d{2}(am|pm)/);
+     });
+ *
+ */
 angularFilter.date = function(date, format) {
   if (isString(date) && NUMBER_STRING.test(date)) {
     date = parseInt(date, 10);
@@ -9261,29 +9497,217 @@ angularFilter.date = function(date, format) {
   return text;
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.json
+ * @function
+ *
+ * @description
+ *   Allows you to convert a JavaScript object into JSON string.
+ *
+ *   This filter is mostly useful for debugging. When using the double curly {{value}} notation
+ *   the binding is automatically converted to JSON.
+ *
+ * @param {*} object Any JavaScript object (including arrays and primitive types) to filter.
+ * @returns {string} JSON string.
+ *
+ * @css ng-monospace Always applied to the encapsulating element.
+ *
+ * @example
+     <span ng:non-bindable>{{ {a:1, b:[]} | json }}</span>: <pre>{{ {a:1, b:[]} | json }}</pre>
+ *
+ * @scenario
+     it('should jsonify filtered objects', function() {
+       expect(binding('{{ {a:1, b:[]} | json')).toBe('{\n  "a":1,\n  "b":[]}');
+     });
+ *
+ */
 angularFilter.json = function(object) {
   this.$element.addClass("ng-monospace");
   return toJson(object, true);
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.lowercase
+ * @function
+ *
+ * @see angular.lowercase
+ */
 angularFilter.lowercase = lowercase;
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.uppercase
+ * @function
+ *
+ * @see angular.uppercase
+ */
 angularFilter.uppercase = uppercase;
 
-/**</>
- * @exportedAs filter:html
- * @param {string=} option if 'unsafe' then do not sanitize the HTML input
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.html
+ * @function
+ *
+ * @description
+ *   Prevents the input from getting escaped by angular. By default the input is sanitized and
+ *   inserted into the DOM as is.
+ *
+ *   The input is sanitized by parsing the html into tokens. All safe tokens (from a whitelist) are
+ *   then serialized back to properly escaped html string. This means that no unsafe input can make
+ *   it into the returned string, however since our parser is more strict than a typical browser
+ *   parser, it's possible that some obscure input, which would be recognized as valid HTML by a
+ *   browser, won't make it through the sanitizer.
+ *
+ *   If you hate your users, you may call the filter with optional 'unsafe' argument, which bypasses
+ *   the html sanitizer, but makes your application vulnerable to XSS and other attacks. Using this
+ *   option is strongly discouraged and should be used only if you absolutely trust the input being
+ *   filtered and you can't get the content through the sanitizer.
+ *
+ * @param {string} html Html input.
+ * @param {string=} option If 'unsafe' then do not sanitize the HTML input.
+ * @returns {string} Sanitized or raw html.
+ *
+ * @example
+     Snippet: <textarea name="snippet" cols="60" rows="3">
+&lt;p style="color:blue"&gt;an html
+&lt;em onmouseover="this.textContent='PWN3D!'"&gt;click here&lt;/em&gt;
+snippet&lt;/p&gt;</textarea>
+     <table>
+       <tr>
+         <td>Filter</td>
+         <td>Source</td>
+         <td>Rendered</td>
+       </tr>
+       <tr id="html-filter">
+         <td>html filter</td>
+         <td>
+           <pre>&lt;div ng:bind="snippet | html"&gt;<br/>&lt;/div&gt;</pre>
+         </td>
+         <td>
+           <div ng:bind="snippet | html"></div>
+         </td>
+       </tr>
+       <tr id="escaped-html">
+         <td>no filter</td>
+         <td><pre>&lt;div ng:bind="snippet"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet"></div></td>
+       </tr>
+       <tr id="html-unsafe-filter">
+         <td>unsafe html filter</td>
+         <td><pre>&lt;div ng:bind="snippet | html:'unsafe'"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet | html:'unsafe'"></div></td>
+       </tr>
+     </table>
+ *
+ * @scenario
+     it('should sanitize the html snippet ', function(){
+       expect(using('#html-filter').binding('snippet | html')).
+         toBe('<p>an html\n<em>click here</em>\nsnippet</p>');
+     });
+
+     it ('should escape snippet without any filter', function() {
+       expect(using('#escaped-html').binding('snippet')).
+         toBe("&lt;p style=\"color:blue\"&gt;an html\n" +
+              "&lt;em onmouseover=\"this.textContent='PWN3D!'\"&gt;click here&lt;/em&gt;\n" +
+              "snippet&lt;/p&gt;");
+     });
+
+     it ('should inline raw snippet if filtered as unsafe', function() {
+       expect(using('#html-unsafe-filter').binding("snippet | html:'unsafe'")).
+         toBe("<p style=\"color:blue\">an html\n" +
+              "<em onmouseover=\"this.textContent='PWN3D!'\">click here</em>\n" +
+              "snippet</p>");
+     });
+
+     it('should update', function(){
+       textarea('snippet').enter('new <b>text</b>');
+       expect(using('#html-filter').binding('snippet | html')).toBe('new <b>text</b>');
+       expect(using('#escaped-html').binding('snippet')).toBe("new &lt;b&gt;text&lt;/b&gt;");
+       expect(using('#html-unsafe-filter').binding("snippet | html:'unsafe'")).toBe('new <b>text</b>');
+     });
  */
 angularFilter.html =  function(html, option){
   return new HTML(html, option);
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.linky
+ * @function
+ *
+ * @description
+ *   Finds links in text input and turns them into html links. Supports http/https/ftp/mailto and
+ *   plane email address links.
+ *
+ * @param {string} text Input text.
+ * @returns {string} Html-linkified text.
+ *
+ * @example
+     Snippet: <textarea name="snippet" cols="60" rows="3">
+Pretty text with some links:
+http://angularjs.org/,
+mailto:us@somewhere.org,
+another@somewhere.org,
+and one more: ftp://127.0.0.1/.</textarea>
+     <table>
+       <tr>
+         <td>Filter</td>
+         <td>Source</td>
+         <td>Rendered</td>
+       </tr>
+       <tr id="linky-filter">
+         <td>linky filter</td>
+         <td>
+           <pre>&lt;div ng:bind="snippet | linky"&gt;<br/>&lt;/div&gt;</pre>
+         </td>
+         <td>
+           <div ng:bind="snippet | linky"></div>
+         </td>
+       </tr>
+       <tr id="escaped-html">
+         <td>no filter</td>
+         <td><pre>&lt;div ng:bind="snippet"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet"></div></td>
+       </tr>
+     </table>
+ *
+ * @scenario
+     it('should linkify the snippet with urls', function(){
+       expect(using('#linky-filter').binding('snippet | linky')).
+         toBe('Pretty text with some links:\n' +
+              '<a href="http://angularjs.org/">http://angularjs.org/</a>,\n' +
+              '<a href="mailto:us@somewhere.org">us@somewhere.org</a>,\n' +
+              '<a href="mailto:another@somewhere.org">another@somewhere.org</a>,\n' +
+              'and one more: <a href="ftp://127.0.0.1/">ftp://127.0.0.1/</a>.');
+     });
+
+     it ('should not linkify snippet without the linky filter', function() {
+       expect(using('#escaped-html').binding('snippet')).
+         toBe("Pretty text with some links:\n" +
+              "http://angularjs.org/,\n" +
+              "mailto:us@somewhere.org,\n" +
+              "another@somewhere.org,\n" +
+              "and one more: ftp://127.0.0.1/.");
+     });
+
+     it('should update', function(){
+       textarea('snippet').enter('new http://link.');
+       expect(using('#linky-filter').binding('snippet | linky')).
+         toBe('new <a href="http://link">http://link</a>.');
+       expect(using('#escaped-html').binding('snippet')).toBe('new http://link.');
+     });
+ */
+//TODO: externalize all regexps
 angularFilter.linky = function(text){
   if (!text) return text;
-  function regExpEscape(text) {
-    return text.replace(/([\/\.\*\+\?\|\(\)\[\]\{\}\\])/g, '\\$1');
-  }
-  var URL = /(ftp|http|https|mailto):\/\/([^\(\)|\s]+)/;
+  var URL = /((ftp|https?):\/\/|(mailto:)?[A-Za-z0-9._%+-]+@)\S*[^\s\.\;\,\(\)\{\}\<\>]/;
   var match;
   var raw = text;
   var html = [];
@@ -9291,13 +9715,16 @@ angularFilter.linky = function(text){
   var url;
   var i;
   while (match=raw.match(URL)) {
-    url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
-    i = raw.indexOf(url);
+    // We can not end in these as they are sometimes found at the end of the sentence
+    url = match[0];
+    // if we did not match ftp/http/mailto then assume mailto
+    if (match[2]==match[3]) url = 'mailto:' + url;
+    i = match.index;
     writer.chars(raw.substr(0, i));
     writer.start('a', {href:url});
-    writer.chars(url);
+    writer.chars(match[0].replace(/^mailto:/, ''));
     writer.end('a');
-    raw = raw.substring(i + url.length);
+    raw = raw.substring(i + match[0].length);
   }
   writer.chars(raw);
   return new HTML(html.join(''));
@@ -9488,12 +9915,14 @@ angularServiceInject("$document", function(window){
 angularServiceInject("$location", function(browser) {
   var scope = this,
       location = {toString:toString, update:update, updateHash: updateHash},
-      lastLocationHref = browser.getUrl(),
+      lastBrowserUrl = browser.getUrl(),
+      lastLocationHref,
       lastLocationHash;
 
-  browser.addPollFn(function(){
-    if (lastLocationHref !== browser.getUrl()) {
-      update(lastLocationHref = browser.getUrl());
+  browser.addPollFn(function() {
+    if (lastBrowserUrl != browser.getUrl()) {
+      update(lastBrowserUrl = browser.getUrl());
+      updateLastLocation();
       scope.$eval();
     }
   });
@@ -9501,8 +9930,8 @@ angularServiceInject("$location", function(browser) {
   this.$onEval(PRIORITY_FIRST, updateBrowser);
   this.$onEval(PRIORITY_LAST, updateBrowser);
 
-  update(lastLocationHref);
-  lastLocationHash = location.hash;
+  update(lastBrowserUrl);
+  updateLastLocation();
 
   return location;
 
@@ -9603,15 +10032,23 @@ angularServiceInject("$location", function(browser) {
   }
 
   /**
+   * Update information about last location
+   */
+  function updateLastLocation() {
+    lastLocationHref = location.href;
+    lastLocationHash = location.hash;
+  }
+
+  /**
    * If location has changed, update the browser
    * This method is called at the end of $eval() phase
    */
   function updateBrowser() {
     updateLocation();
 
-    if (location.href != lastLocationHref) {
-      browser.setUrl(lastLocationHref = location.href);
-      lastLocationHash = location.hash;
+    if (location.href != lastLocationHref) {    	
+      browser.setUrl(lastBrowserUrl = location.href);
+      updateLastLocation();
     }
   }
 
@@ -9652,7 +10089,7 @@ angularServiceInject("$location", function(browser) {
     var match = URL_MATCH.exec(href);
 
     if (match) {
-      loc.href = href.replace('#$', '');
+      loc.href = href.replace(/#$/, '');
       loc.protocol = match[1];
       loc.host = match[3] || '';
       loc.port = match[5] || DEFAULT_PORTS[loc.protocol] || _null;
@@ -10138,7 +10575,8 @@ angularDirective("ng:eval", function(expression){
   };
 });
 
-angularDirective("ng:bind", function(expression){
+angularDirective("ng:bind", function(expression, element){
+  element.addClass('ng-binding');
   return function(element) {
     var lastValue = noop, lastError = noop;
     this.$onEval(function() {
@@ -10213,7 +10651,8 @@ function compileBindTemplate(template){
   return fn;
 }
 
-angularDirective("ng:bind-template", function(expression){
+angularDirective("ng:bind-template", function(expression, element){
+  element.addClass('ng-binding');
   var templateFn = compileBindTemplate(expression);
   return function(element) {
     var lastValue;
@@ -10508,6 +10947,10 @@ angularAttrMarkup('{{}}', function(value, name, element){
     element.attr(NG_BIND_ATTR, toJson(bindAttr));
   }
 });
+/**
+ *
+ */
+
 function modelAccessor(scope, element) {
   var expr = element.attr('name');
   if (!expr) throw "Required field 'name' not found.";
@@ -10750,6 +11193,16 @@ angularWidget('option', function(){
 });
 
 
+/*ng:doc
+ * @type widget
+ * @name ng:include
+ *
+ * @description
+ *
+ * @example
+ *
+ * @scenario
+ */
 angularWidget('ng:include', function(element){
   var compiler = this,
       srcExp = element.attr("src"),
@@ -10912,6 +11365,7 @@ extend(angular, {
   'isArray': isArray
 });
 
+
 /**
  * Setup file for the Scenario.
  * Must be first in the compilation/bootstrap list.
@@ -11006,6 +11460,7 @@ angular.scenario.matcher = angular.scenario.matcher || function(name, fn) {
  * @param {Object} config Config options
  */
 function angularScenarioInit($scenario, config) {
+  var href = window.location.href;
   var body = _jQuery(document.body);
   var output = [];
 
@@ -11020,6 +11475,15 @@ function angularScenarioInit($scenario, config) {
       fn.call({}, context, $scenario);
     }
   });
+
+  if (!/^http/.test(href) && !/^https/.test(href)) {
+    body.append('<p id="system-error"></p>');
+    body.find('#system-error').text(
+      'Scenario runner must be run using http or https. The protocol ' +
+      href.split(':')[0] + ':// is not supported.'
+    );
+    return;
+  }
 
   var appFrame = body.append('<div id="application"></div>').find('#application');
   var application = new angular.scenario.Application(appFrame);
@@ -11047,7 +11511,7 @@ function angularScenarioInit($scenario, config) {
  *
  * @param {Array} list list to iterate over
  * @param {Function} iterator Callback function(value, continueFunction)
- * @param {Function} done Callback function(error, result) called when 
+ * @param {Function} done Callback function(error, result) called when
  *   iteration finishes or an error occurs.
  */
 function asyncForEach(list, iterator, done) {
@@ -11237,27 +11701,70 @@ angular.scenario.Application.prototype.getWindow_ = function() {
 };
 
 /**
+ * Checks that a URL would return a 2xx success status code. Callback is called
+ * with no arguments on success, or with an error on failure.
+ *
+ * Warning: This requires the server to be able to respond to HEAD requests
+ * and not modify the state of your application.
+ *
+ * @param {string} url Url to check
+ * @param {Function} callback function(error) that is called with result.
+ */
+angular.scenario.Application.prototype.checkUrlStatus_ = function(url, callback) {
+  var self = this;
+  _jQuery.ajax({
+    url: url,
+    type: 'HEAD',
+    complete: function(request) {
+      if (request.status < 200 || request.status >= 300) {
+        if (!request.status) {
+          callback.call(self, 'Sandbox Error: Cannot access ' + url);
+        } else {
+          callback.call(self, request.status + ' ' + request.statusText);
+        }
+      } else {
+        callback.call(self);
+      }
+    }
+  });
+};
+
+/**
  * Changes the location of the frame.
  *
- * @param {string} url The URL. If it begins with a # then only the 
+ * @param {string} url The URL. If it begins with a # then only the
  *   hash of the page is changed.
- * @param {Function} onloadFn function($window, $document)
+ * @param {Function} loadFn function($window, $document) Called when frame loads.
+ * @param {Function} errorFn function(error) Called if any error when loading.
  */
-angular.scenario.Application.prototype.navigateTo = function(url, onloadFn) {
+angular.scenario.Application.prototype.navigateTo = function(url, loadFn, errorFn) {
   var self = this;
   var frame = this.getFrame_();
-  if (url.charAt(0) === '#') {
+  //TODO(esprehn): Refactor to use rethrow()
+  errorFn = errorFn || function(e) { throw e; };
+  if (url === 'about:blank') {
+    errorFn('Sandbox Error: Navigating to about:blank is not allowed.');
+  } else if (url.charAt(0) === '#') {
     url = frame.attr('src').split('#')[0] + url;
     frame.attr('src', url);
-    this.executeAction(onloadFn);
+    this.executeAction(loadFn);
   } else {
     frame.css('display', 'none').attr('src', 'about:blank');
-    this.context.find('#test-frames').append('<iframe>');
-    frame = this.getFrame_();
-    frame.load(function() {
-      self.executeAction(onloadFn);
-      frame.unbind();
-    }).attr('src', url);
+    this.checkUrlStatus_(url, function(error) {
+      if (error) {
+        return errorFn(error);
+      }
+      self.context.find('#test-frames').append('<iframe>');
+      frame = this.getFrame_();
+      frame.load(function() {
+        frame.unbind();
+        try {
+          self.executeAction(loadFn);
+        } catch (e) {
+          errorFn(e);
+        }
+      }).attr('src', url);
+    });
   }
   this.context.find('> h2 a').attr('href', url).text(url);
 };
@@ -11272,6 +11779,9 @@ angular.scenario.Application.prototype.navigateTo = function(url, onloadFn) {
 angular.scenario.Application.prototype.executeAction = function(action) {
   var self = this;
   var $window = this.getWindow_();
+  if (!$window.document) {
+    throw 'Sandbox Error: Application document not accessible.';
+  }
   if (!$window.angular) {
     return action.call(this, $window, _jQuery($window.document));
   }
@@ -12023,7 +12533,6 @@ angular.scenario.SpecRunner = function() {
  */
 angular.scenario.SpecRunner.prototype.run = function(spec, specDone) {
   var self = this;
-  var count = 0;
   this.spec = spec;
 
   this.emit('SpecBegin', spec);
@@ -12061,11 +12570,7 @@ angular.scenario.SpecRunner.prototype.run = function(spec, specDone) {
             return handleError(error, futureDone);
           }
           self.emit('StepEnd', spec, future);
-          if ((count++) % 10 === 0) {
-            self.$window.setTimeout(function() { futureDone(); }, 0);
-          } else {
-            futureDone();
-          }
+          self.$window.setTimeout(function() { futureDone(); }, 0);
         });
       } catch (e) {
         self.emit('StepError', spec, future, e);
@@ -12117,9 +12622,7 @@ angular.scenario.SpecRunner.prototype.addFutureAction = function(name, behavior,
       //TODO(esprehn): Refactor this so it doesn't need to be in here.
       $document.elements = function(selector) {
         var args = Array.prototype.slice.call(arguments, 1);
-        if (self.selector) {
-          selector = self.selector + ' ' + (selector || '');
-        }
+        selector = (self.selector || '') + ' ' + (selector || '');
         angular.foreach(args, function(value, index) {
           selector = selector.replace('$' + (index + 1), value);
         });
@@ -12164,15 +12667,98 @@ angular.scenario.dsl('wait', function() {
 });
 
 /**
-* Usage:
-*    pause(seconds) pauses the test for specified number of seconds
-*/
+ * Usage:
+ *    pause(seconds) pauses the test for specified number of seconds
+ */
 angular.scenario.dsl('pause', function() {
- return function(time) {
-   return this.addFuture('pause for ' + time + ' seconds', function(done) {
-     this.$window.setTimeout(function() { done(null, time * 1000); }, time * 1000);
-   });
- };
+  return function(time) {
+    return this.addFuture('pause for ' + time + ' seconds', function(done) {
+      this.$window.setTimeout(function() { done(null, time * 1000); }, time * 1000);
+    });
+  };
+});
+
+/**
+ * Usage:
+ *    browser().navigateTo(url) Loads the url into the frame
+ *    browser().navigateTo(url, fn) where fn(url) is called and returns the URL to navigate to
+ *    browser().reload() refresh the page (reload the same URL)
+ *    browser().location().href() the full URL of the page
+ *    browser().location().hash() the full hash in the url
+ *    browser().location().path() the full path in the url
+ *    browser().location().hashSearch() the hashSearch Object from angular
+ *    browser().location().hashPath() the hashPath string from angular
+ */
+angular.scenario.dsl('browser', function() {
+  var chain = {};
+
+  chain.navigateTo = function(url, delegate) {
+    var application = this.application;
+    return this.addFuture("browser navigate to '" + url + "'", function(done) {
+      if (delegate) {
+        url = delegate.call(this, url);
+      }
+      application.navigateTo(url, function() {
+        done(null, url);
+      }, done);
+    });
+  };
+
+  chain.reload = function() {
+    var application = this.application;
+    return this.addFutureAction('browser reload', function($window, $document, done) {
+      var href = $window.location.href;
+      application.navigateTo(href, function() {
+        done(null, href);
+      }, done);
+    });
+  };
+
+  chain.location = function() {
+    var api = {};
+
+    api.href = function() {
+      return this.addFutureAction('browser url', function($window, $document, done) {
+        done(null, $window.location.href);
+      });
+    };
+
+    api.hash = function() {
+      return this.addFutureAction('browser url hash', function($window, $document, done) {
+        done(null, $window.location.hash.replace('#', ''));
+      });
+    };
+
+    api.path = function() {
+      return this.addFutureAction('browser url path', function($window, $document, done) {
+        done(null, $window.location.pathname);
+      });
+    };
+
+    api.search = function() {
+      return this.addFutureAction('browser url search', function($window, $document, done) {
+        done(null, $window.angular.scope().$location.search);
+      });
+    };
+
+    api.hashSearch = function() {
+      return this.addFutureAction('browser url hash search', function($window, $document, done) {
+        done(null, $window.angular.scope().$location.hashSearch);
+      });
+    };
+
+    api.hashPath = function() {
+      return this.addFutureAction('browser url hash path', function($window, $document, done) {
+        done(null, $window.angular.scope().$location.hashPath);
+      });
+    };
+
+    return api;
+  };
+
+  return function(time) {
+    return chain;
+  };
 });
 
 /**
@@ -12198,33 +12784,19 @@ angular.scenario.dsl('expect', function() {
 
 /**
  * Usage:
- *    navigateTo(url) Loads the url into the frame
- *    navigateTo(url, fn) where fn(url) is called and returns the URL to navigate to
- */
-angular.scenario.dsl('navigateTo', function() {
-  return function(url, delegate) {
-    var application = this.application;
-    return this.addFuture('navigate to ' + url, function(done) {
-      if (delegate) {
-        url = delegate.call(this, url);
-      }
-      application.navigateTo(url, function() {
-        done(null, url);
-      });
-    });
-  };
-});
-
-/**
- * Usage:
- *    using(selector) scopes the next DSL element selection
+ *    using(selector, label) scopes the next DSL element selection
  *
  * ex.
- *   using('#foo').input('bar')
+ *   using('#foo', "'Foo' text field").input('bar')
  */
 angular.scenario.dsl('using', function() {
-  return function(selector) {
-    this.selector = (this.selector||'') + ' ' + selector;
+  return function(selector, label) {
+    this.selector = _jQuery.trim((this.selector||'') + ' ' + selector);
+    if (angular.isString(label) && label.length) {
+      this.label = label + ' ( ' + this.selector + ' )';
+    } else {
+      this.label = this.selector;
+    }
     return this.dsl;
   };
 });
@@ -12234,17 +12806,27 @@ angular.scenario.dsl('using', function() {
  *    binding(name) returns the value of a binding
  */
 angular.scenario.dsl('binding', function() {
+  function contains(text, value) {
+    return value instanceof RegExp ?
+             value.test(text) :
+             text && text.indexOf(value) >= 0;
+  }
   return function(name) {
     return this.addFutureAction("select binding '" + name + "'", function($window, $document, done) {
-      var element;
-      try {
-        element = $document.elements('[ng\\:bind-template*="{{$1}}"]', name);
-      } catch(e) {
-        if (e.type !== 'selector')
-          throw e;
-        element = $document.elements('[ng\\:bind="$1"]', name);
+      var elements = $document.elements('.ng-binding');
+      for ( var i = 0; i < elements.length; i++) {
+        var element = new elements.init(elements[i]);
+        if (contains(element.attr('ng:bind'), name) ||
+            contains(element.attr('ng:bind-template'), name)) {
+          if (element.is('input, textarea')) {
+            done(null, element.val());
+          } else {
+            done(null, element.html());
+          }
+          return;
+        }
       }
-      done(null, element.text());
+      done("Binding selector '" + name + "' did not match.");
     });
   };
 });
@@ -12290,17 +12872,41 @@ angular.scenario.dsl('input', function() {
   };
 });
 
+
 /**
  * Usage:
- *    repeater('#products table').count() number of rows
- *    repeater('#products table').row(1) all bindings in row as an array
- *    repeater('#products table').column('product.name') all values across all rows in an array
+ *    textarea(name).enter(value) enters value in the text area with specified name
+ */
+angular.scenario.dsl('textarea', function() {
+  var chain = {};
+
+  chain.enter = function(value) {
+    return this.addFutureAction("textarea '" + this.name + "' enter '" + value + "'", function($window, $document, done) {
+      var textarea = $document.elements('textarea[name="$1"]', this.name);
+      textarea.val(value);
+      textarea.trigger('change');
+      done();
+    });
+  };
+
+  return function(name) {
+    this.name = name;
+    return chain;
+  };
+});
+
+
+/**
+ * Usage:
+ *    repeater('#products table', 'Product List').count() number of rows
+ *    repeater('#products table', 'Product List').row(1) all bindings in row as an array
+ *    repeater('#products table', 'Product List').column('product.name') all values across all rows in an array
  */
 angular.scenario.dsl('repeater', function() {
   var chain = {};
 
   chain.count = function() {
-    return this.addFutureAction('repeater ' + this.selector + ' count', function($window, $document, done) {
+    return this.addFutureAction("repeater '" + this.label + "' count", function($window, $document, done) {
       try {
         done(null, $document.elements().length);
       } catch (e) {
@@ -12310,7 +12916,7 @@ angular.scenario.dsl('repeater', function() {
   };
 
   chain.column = function(binding) {
-    return this.addFutureAction('repeater ' + this.selector + ' column ' + binding, function($window, $document, done) {
+    return this.addFutureAction("repeater '" + this.label + "' column '" + binding + "'", function($window, $document, done) {
       var values = [];
       $document.elements().each(function() {
         _jQuery(this).find(':visible').each(function() {
@@ -12325,14 +12931,14 @@ angular.scenario.dsl('repeater', function() {
   };
 
   chain.row = function(index) {
-    return this.addFutureAction('repeater ' + this.selector + ' row ' + index, function($window, $document, done) {
+    return this.addFutureAction("repeater '" + this.label + "' row '" + index + "'", function($window, $document, done) {
       var values = [];
       var matches = $document.elements().slice(index, index + 1);
       if (!matches.length)
         return done('row ' + index + ' out of bounds');
       _jQuery(matches[0]).find(':visible').each(function() {
         var element = _jQuery(this);
-        if (element.attr('ng:bind')) {
+        if (angular.isDefined(element.attr('ng:bind'))) {
           values.push(element.text());
         }
       });
@@ -12340,22 +12946,22 @@ angular.scenario.dsl('repeater', function() {
     });
   };
 
-  return function(selector) {
-    this.dsl.using(selector);
+  return function(selector, label) {
+    this.dsl.using(selector, label);
     return chain;
   };
 });
 
 /**
  * Usage:
- *    select(selector).option('value') select one option
- *    select(selector).options('value1', 'value2', ...) select options from a multi select
+ *    select(name).option('value') select one option
+ *    select(name).options('value1', 'value2', ...) select options from a multi select
  */
 angular.scenario.dsl('select', function() {
   var chain = {};
 
   chain.option = function(value) {
-    return this.addFutureAction('select ' + this.name + ' option ' + value, function($window, $document, done) {
+    return this.addFutureAction("select '" + this.name + "' option '" + value + "'", function($window, $document, done) {
       var select = $document.elements('select[name="$1"]', this.name);
       select.val(value);
       select.trigger('change');
@@ -12365,7 +12971,7 @@ angular.scenario.dsl('select', function() {
 
   chain.options = function() {
     var values = arguments;
-    return this.addFutureAction('select ' + this.name + ' options ' + values, function($window, $document, done) {
+    return this.addFutureAction("select '" + this.name + "' options '" + values + "'", function($window, $document, done) {
       var select = $document.elements('select[multiple][name="$1"]', this.name);
       select.val(values);
       select.trigger('change');
@@ -12381,19 +12987,23 @@ angular.scenario.dsl('select', function() {
 
 /**
  * Usage:
- *    element(selector).count() get the number of elements that match selector
- *    element(selector).click() clicks an element
- *    element(selector).attr(name) gets the value of an attribute
- *    element(selector).attr(name, value) sets the value of an attribute
- *    element(selector).val() gets the value (as defined by jQuery)
- *    element(selector).val(value) sets the value (as defined by jQuery)
- *    element(selector).query(fn) executes fn(selectedElements, done)
+ *    element(selector, label).count() get the number of elements that match selector
+ *    element(selector, label).click() clicks an element
+ *    element(selector, label).attr(name) gets the value of an attribute
+ *    element(selector, label).attr(name, value) sets the value of an attribute
+ *    element(selector, label).val() gets the value (as defined by jQuery)
+ *    element(selector, label).val(value) sets the value (as defined by jQuery)
+ *    element(selector, label).query(fn) executes fn(selectedElements, done)
  */
 angular.scenario.dsl('element', function() {
+  var VALUE_METHODS = [
+    'val', 'text', 'html', 'height', 'innerHeight', 'outerHeight', 'width',
+    'innerWidth', 'outerWidth', 'position', 'scrollLeft', 'scrollTop', 'offset'
+  ];
   var chain = {};
 
   chain.count = function() {
-    return this.addFutureAction('element ' + this.selector + ' count', function($window, $document, done) {
+    return this.addFutureAction("element '" + this.label + "' count", function($window, $document, done) {
       try {
         done(null, $document.elements().length);
       } catch (e) {
@@ -12403,14 +13013,14 @@ angular.scenario.dsl('element', function() {
   };
 
   chain.click = function() {
-    return this.addFutureAction('element ' + this.selector + ' click', function($window, $document, done) {
+    return this.addFutureAction("element '" + this.label + "' click", function($window, $document, done) {
       var elements = $document.elements();
       var href = elements.attr('href');
       elements.trigger('click');
       if (href && elements[0].nodeName.toUpperCase() === 'A') {
         this.application.navigateTo(href, function() {
           done();
-        });
+        }, done);
       } else {
         done();
       }
@@ -12418,33 +13028,36 @@ angular.scenario.dsl('element', function() {
   };
 
   chain.attr = function(name, value) {
-    var futureName = 'element ' + this.selector + ' get attribute ' + name;
-    if (value) {
-      futureName = 'element ' + this.selector + ' set attribute ' + name + ' to ' + value;
+    var futureName = "element '" + this.label + "' get attribute '" + name + "'";
+    if (angular.isDefined(value)) {
+      futureName = "element '" + this.label + "' set attribute '" + name + "' to " + "'" + value + "'";
     }
     return this.addFutureAction(futureName, function($window, $document, done) {
       done(null, $document.elements().attr(name, value));
     });
   };
 
-  chain.val = function(value) {
-    var futureName = 'element ' + this.selector + ' value';
-    if (value) {
-      futureName = 'element ' + this.selector + ' set value to ' + value;
-    }
-    return this.addFutureAction(futureName, function($window, $document, done) {
-      done(null, $document.elements().val(value));
-    });
-  };
-
   chain.query = function(fn) {
-    return this.addFutureAction('element ' + this.selector + ' custom query', function($window, $document, done) {
+    return this.addFutureAction('element ' + this.label + ' custom query', function($window, $document, done) {
       fn.call(this, $document.elements(), done);
     });
   };
 
-  return function(selector) {
-    this.dsl.using(selector);
+  angular.foreach(VALUE_METHODS, function(methodName) {
+    chain[methodName] = function(value) {
+      var futureName = "element '" + this.label + "' " + methodName;
+      if (angular.isDefined(value)) {
+        futureName = "element '" + this.label + "' set " + methodName + " to '" + value + "'";
+      }
+      return this.addFutureAction(futureName, function($window, $document, done) {
+        var element = $document.elements();
+        done(null, element[methodName].call(element, value));
+      });
+    };
+  });
+
+  return function(selector, label) {
+    this.dsl.using(selector, label);
     return chain;
   };
 });
@@ -12733,4 +13346,4 @@ angular.scenario.output('object', function(context, runner) {
 
 })(window, document, window.onload);
 document.write('<style type="text/css">@charset "UTF-8";\n\n.ng-format-negative {\n  color: red;\n}\n\n.ng-exception {\n  border: 2px solid #FF0000;\n  font-family: "Courier New", Courier, monospace;\n  font-size: smaller;\n}\n\n.ng-validation-error {\n  border: 2px solid #FF0000;\n}\n\n\n/*****************\n * TIP\n *****************/\n#ng-callout {\n  margin: 0;\n  padding: 0;\n  border: 0;\n  outline: 0;\n  font-size: 13px;\n  font-weight: normal;\n  font-family: Verdana, Arial, Helvetica, sans-serif;\n  vertical-align: baseline;\n  background: transparent;\n  text-decoration: none;\n}\n\n#ng-callout .ng-arrow-left{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrSLoc/AG8FeUUIN+sGebWAnbKSJodqqlsOxJtqYooU9vvk+vcJIcTkg+QAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  left:-12px;\n  height:23px;\n  width:10px;\n  top:-3px;\n}\n\n#ng-callout .ng-arrow-right{\n  background-image: url("data:image/gif;base64,R0lGODlhCwAXAKIAAMzMzO/v7/f39////////wAAAAAAAAAAACH5BAUUAAQALAAAAAALABcAAAMrCLTcoM29yN6k9socs91e5X3EyJloipYrO4ohTMqA0Fn2XVNswJe+H+SXAAA7");\n  background-repeat: no-repeat;\n  background-position: left top;\n  position: absolute;\n  z-index:101;\n  height:23px;\n  width:11px;\n    top:-2px;\n}\n\n#ng-callout {\n  position: absolute;\n  z-index:100;\n  border: 2px solid #CCCCCC;\n  background-color: #fff;\n}\n\n#ng-callout .ng-content{\n  padding:10px 10px 10px 10px;\n  color:#333333;\n}\n\n#ng-callout .ng-title{\n  background-color: #CCCCCC;\n  text-align: left;\n  padding-left: 8px;\n  padding-bottom: 5px;\n  padding-top: 2px;\n  font-weight:bold;\n}\n\n\n/*****************\n * indicators\n *****************/\n.ng-input-indicator-wait {\n  background-image: url("data:image/png;base64,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");\n  background-position: right;\n  background-repeat: no-repeat;\n}\n</style>');
-document.write('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#json, #xml {\n  display: none;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#application h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#application,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#application {\n  margin: 10px;\n}\n\n#application iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#application .popout {\n  float: right;\n}\n\n#application iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe {\n  padding-bottom: 0.5em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#application h2 {\n  background-color: #efefef;\n}\n\n#application {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');
+document.write('<style type="text/css">@charset "UTF-8";\n/* CSS Document */\n\n/** Structure */\nbody {\n  font-family: Arial, sans-serif;\n  margin: 0;\n  font-size: 14px;\n}\n\n#system-error {\n  font-size: 1.5em;\n  text-align: center;\n}\n\n#json, #xml {\n  display: none;\n}\n\n#header {\n  position: fixed;\n  width: 100%;\n}\n\n#specs {\n  padding-top: 50px;\n}\n\n#header .angular {\n  font-family: Courier New, monospace;\n  font-weight: bold;\n}\n\n#header h1 {\n  font-weight: normal;\n  float: left;\n  font-size: 30px;\n  line-height: 30px;\n  margin: 0;\n  padding: 10px 10px;\n  height: 30px;\n}\n\n#application h2,\n#specs h2 {\n  margin: 0;\n  padding: 0.5em;\n  font-size: 1.1em;\n}\n\n#status-legend {\n  margin-top: 10px;\n  margin-right: 10px;\n}\n\n#header,\n#application,\n.test-info,\n.test-actions li {\n  overflow: hidden;\n}\n\n#application {\n  margin: 10px;\n}\n\n#application iframe {\n  width: 100%;\n  height: 758px;\n}\n\n#application .popout {\n  float: right;\n}\n\n#application iframe {\n  border: none;\n}\n\n.tests li,\n.test-actions li,\n.test-it li,\n.test-it ol,\n.status-display {\n  list-style-type: none;\n}\n\n.tests,\n.test-it ol,\n.status-display {\n  margin: 0;\n  padding: 0;\n}\n\n.test-info {\n  margin-left: 1em;\n  margin-top: 0.5em;\n  border-radius: 8px 0 0 8px;\n  -webkit-border-radius: 8px 0 0 8px;\n  -moz-border-radius: 8px 0 0 8px;\n  cursor: pointer;\n}\n\n.test-info:hover .test-name {\n  text-decoration: underline;\n}\n\n.test-info .closed:before {\n  content: \'\\25b8\\00A0\';\n}\n\n.test-info .open:before {\n  content: \'\\25be\\00A0\';\n  font-weight: bold;\n}\n\n.test-it ol {\n  margin-left: 2.5em;\n}\n\n.status-display,\n.status-display li {\n  float: right;\n}\n\n.status-display li {\n  padding: 5px 10px;\n}\n\n.timer-result,\n.test-title {\n  display: inline-block;\n  margin: 0;\n  padding: 4px;\n}\n\n.test-actions .test-title,\n.test-actions .test-result {\n  display: table-cell;\n  padding-left: 0.5em;\n  padding-right: 0.5em;\n}\n\n.test-actions {\n  display: table;\n}\n\n.test-actions li {\n  display: table-row;\n}\n\n.timer-result {\n  width: 4em;\n  padding: 0 10px;\n  text-align: right;\n  font-family: monospace;\n}\n\n.test-it pre,\n.test-actions pre {\n  clear: left;\n  color: black;\n  margin-left: 6em;\n}\n\n.test-describe {\n  padding-bottom: 0.5em;\n}\n\n.test-describe .test-describe {\n  margin: 5px 5px 10px 2em;\n}\n\n.test-actions .status-pending .test-title:before {\n  content: \'\\00bb\\00A0\';\n}\n\n.scrollpane {\n   max-height: 20em;\n   overflow: auto;\n}\n\n/** Colors */\n\n#header {\n  background-color: #F2C200;\n}\n\n#specs h2 {\n  border-top: 2px solid #BABAD1;\n}\n\n#specs h2,\n#application h2 {\n  background-color: #efefef;\n}\n\n#application {\n  border: 1px solid #BABAD1;\n}\n\n.test-describe .test-describe {\n  border-left: 1px solid #BABAD1;\n  border-right: 1px solid #BABAD1;\n  border-bottom: 1px solid #BABAD1;\n}\n\n.status-display {\n  border: 1px solid #777;\n}\n\n.status-display .status-pending,\n.status-pending .test-info {\n  background-color: #F9EEBC;\n}\n\n.status-display .status-success,\n.status-success .test-info {\n  background-color: #B1D7A1;\n}\n\n.status-display .status-failure,\n.status-failure .test-info {\n  background-color: #FF8286;\n}\n\n.status-display .status-error,\n.status-error .test-info {\n  background-color: black;\n  color: white;\n}\n\n.test-actions .status-success .test-title {\n  color: #30B30A;\n}\n\n.test-actions .status-failure .test-title {\n  color: #DF0000;\n}\n\n.test-actions .status-error .test-title {\n  color: black;\n}\n\n.test-actions .timer-result {\n  color: #888;\n}\n</style>');

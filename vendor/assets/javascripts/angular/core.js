@@ -27,9 +27,30 @@
 if (typeof document.getAttribute == $undefined)
   document.getAttribute = function() {};
 
-//The below may not be true on browsers in the Turkish locale.
+/**
+ * @ngdoc
+ * @name angular.lowercase
+ * @function
+ *
+ * @description Converts string to lowercase
+ * @param {string} value
+ * @returns {string} Lowercased string.
+ */
 var lowercase = function (value){ return isString(value) ? value.toLowerCase() : value; };
+
+
+/**
+ * @ngdoc
+ * @name angular#uppercase
+ * @function
+ *
+ * @description Converts string to uppercase.
+ * @param {string} value
+ * @returns {string} Uppercased string.
+ */
 var uppercase = function (value){ return isString(value) ? value.toUpperCase() : value; };
+
+
 var manualLowercase = function (s) {
   return isString(s) ? s.replace(/[A-Z]/g,
       function (ch) {return fromCharCode(ch.charCodeAt(0) | 32); }) : s;
@@ -38,9 +59,14 @@ var manualUppercase = function (s) {
   return isString(s) ? s.replace(/[a-z]/g,
       function (ch) {return fromCharCode(ch.charCodeAt(0) & ~32); }) : s;
 };
+
+
+// String#toLowerCase and String#toUpperCase don't produce correct results in browsers with Turkish
+// locale, for this reason we need to detect this case and redefine lowercase/uppercase methods with
+// correct but slower alternatives.
 if ('i' !== 'I'.toLowerCase()) {
   lowercase = manualLowercase;
-  uppercase = manulaUppercase;
+  uppercase = manualUppercase;
 }
 
 function fromCharCode(code) { return String.fromCharCode(code); }
@@ -81,12 +107,99 @@ var _undefined        = undefined,
     slice             = Array.prototype.slice,
     push              = Array.prototype.push,
     error             = window[$console] ? bind(window[$console], window[$console]['error'] || noop) : noop,
+
+    /**
+     * @name angular
+     * @namespace The exported angular namespace.
+     */
     angular           = window[$angular]    || (window[$angular] = {}),
     angularTextMarkup = extensionMap(angular, 'markup'),
     angularAttrMarkup = extensionMap(angular, 'attrMarkup'),
     angularDirective  = extensionMap(angular, 'directive'),
     angularWidget     = extensionMap(angular, 'widget', lowercase),
     angularValidator  = extensionMap(angular, 'validator'),
+
+
+    /**
+     * @ngdoc overview
+     * @name angular.filter
+     * @namespace Namespace for all filters.
+     * @description
+     * # Overview
+     * Filters are a standard way to format your data for display to the user. For example, you
+     * might have the number 1234.5678 and would like to display it as US currency: $1,234.57.
+     * Filters allow you to do just that. In addition to transforming the data, filters also modify
+     * the DOM. This allows the filters to for example apply css styles to the filtered output if
+     * certain conditions were met.
+     *
+     *
+     * # Standard Filters
+     *
+     * The Angular framework provides a standard set of filters for common operations, including:
+     * {@link angular.filter.currency}, {@link angular.filter.json}, {@link angular.filter.number},
+     * and {@link angular.filter.html}. You can also add your own filters.
+     *
+     *
+     * # Syntax
+     *
+     * Filters can be part of any {@link angular.scope} evaluation but are typically used with
+     * {{bindings}}. Filters typically transform the data to a new data type, formating the data in
+     * the process. Filters can be chained and take optional arguments. Here are few examples:
+     *
+     * * No filter: {{1234.5678}} => 1234.5678
+     * * Number filter: {{1234.5678|number}} => 1,234.57. Notice the “,” and rounding to two
+     *   significant digits.
+     * * Filter with arguments: {{1234.5678|number:5}} => 1,234.56780. Filters can take optional
+     *   arguments, separated by colons in a binding. To number, the argument “5” requests 5 digits
+     *   to the right of the decimal point.
+     *
+     *
+     * # Writing your own Filters
+     *
+     * Writing your own filter is very easy: just define a JavaScript function on `angular.filter`.
+     * The framework passes in the input value as the first argument to your function. Any filter
+     * arguments are passed in as additional function arguments.
+     *
+     * You can use these variables in the function:
+     *
+     * * `this` — The current scope.
+     * * `$element` — The DOM element containing the binding. This allows the filter to manipulate
+     *   the DOM in addition to transforming the input.
+     *
+     *
+     * @example
+     *   //TODO this example current doesn't show up anywhere because the overview template doesn't
+     *   //     render it.
+     *
+     *   The following example filter reverses a text string. In addition, it conditionally makes the
+     *   text upper-case (to demonstrate optional arguments) and assigns color (to demonstrate DOM
+     *   modification).
+
+         <script type="text/javascript">
+           angular.filter.reverse = function(input, uppercase, color) {
+             var out = "";
+             for (var i = 0; i < input.length; i++) {
+               out = input.charAt(i) + out;
+             }
+             if (uppercase) {
+               out = out.toUpperCase();
+             }
+             if (color) {
+               this.$element.css('color', color);
+             }
+             return out;
+           };
+         </script>
+         <span ng:non-bindable="true">{{"hello"|reverse}}</span>: {{"hello"|reverse}}<br>
+         <span ng:non-bindable="true">{{"hello"|reverse:true}}</span>: {{"hello"|reverse:true}}<br>
+         <span ng:non-bindable="true">{{"hello"|reverse:true:"blue"}}</span>:
+           {{"hello"|reverse:true:"blue"}}
+
+     * //TODO: I completely dropped a mention of using the other option (setter method), it's
+     * confusing to have two ways to do the same thing. I just wonder if we should prefer using the
+     * setter way over direct assignment because in the future we might want to be able to intercept
+     * filter registrations for some reason.
+     */
     angularFilter     = extensionMap(angular, 'filter'),
     angularFormatter  = extensionMap(angular, 'formatter'),
     angularService    = extensionMap(angular, 'service'),
@@ -279,7 +392,7 @@ function isLeafNode (node) {
  * @param {*} source The source to be used during copy.
  *                   Can be any type including primitives, null and undefined.
  * @param {(Object|Array)=} destination Optional destination into which the source is copied
- * @return {*}
+ * @returns {*}
  */
 function copy(source, destination){
   if (!destination) {
@@ -422,7 +535,7 @@ function compile(element, existingScope) {
 
 /**
  * Parses an escaped url query string into key-value pairs.
- * @return Object.<(string|boolean)>
+ * @returns Object.<(string|boolean)>
  */
 function parseKeyValue(/**string*/keyValue) {
   var obj = {}, key_value, key;
@@ -517,6 +630,8 @@ function toJsonArray(buf, obj, pretty, stack){
   var type = typeof obj;
   if (obj === _null) {
     buf.push($null);
+  } else if (obj instanceof RegExp) {
+    buf.push(angular['String']['quoteUnicode'](obj.toString()));
   } else if (type === $function) {
     return;
   } else if (type === $boolean) {
@@ -537,7 +652,7 @@ function toJsonArray(buf, obj, pretty, stack){
       for(var i=0; i<len; i++) {
         var item = obj[i];
         if (sep) buf.push(",");
-        if (typeof item == $function || typeof item == $undefined) {
+        if (!(item instanceof RegExp) && (typeof item == $function || typeof item == $undefined)) {
           buf.push($null);
         } else {
           toJsonArray(buf, item, pretty, stack);
@@ -694,9 +809,11 @@ Compiler.prototype = {
   templatize: function(element, elementIndex, priority){
     var self = this,
         widget,
+        fn,
         directiveFns = self.directives,
         descend = true,
         directives = true,
+        elementName = nodeName(element),
         template,
         selfApi = {
           compile: bind(self, self.compile),
@@ -720,12 +837,15 @@ Compiler.prototype = {
     eachAttribute(element, function(value, name){
       if (!widget) {
         if (widget = self.widgets('@' + name)) {
+          element.addClass('ng-attr-widget');
           widget = bind(selfApi, widget, value, element);
         }
       }
     });
     if (!widget) {
-      if (widget = self.widgets(nodeName(element))) {
+      if (widget = self.widgets(elementName)) {
+        if (elementName.indexOf(':') > 0)
+          element.addClass('ng-widget');
         widget = bind(selfApi, widget, element);
       }
     }
@@ -761,7 +881,11 @@ Compiler.prototype = {
         });
       });
       eachAttribute(element, function(value, name){
-        template.addInit((directiveFns[name]||noop).call(selfApi, value, element));
+        fn = directiveFns[name];
+        if (fn) {
+          element.addClass('ng-directive');
+          template.addInit((directiveFns[name]).call(selfApi, value, element));
+        }
       });
     }
     // Process non text child nodes
@@ -848,11 +972,11 @@ var scopeId = 0,
     compileCache = {},
     JS_KEYWORDS = {};
 foreach(
-   ["abstract", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "debugger", "default",
-    "delete", "do", "double", "else", "enum", "export", "extends", "false", "final", "finally", "float", "for", $function, "goto",
-    "if", "implements", "import", "ininstanceof", "intinterface", "long", "native", "new", $null, "package", "private",
-    "protected", "public", "return", "short", "static", "super", "switch", "synchronized", "this", "throw", "throws",
-    "transient", "true", "try", "typeof", "var", "volatile", "void", $undefined, "while", "with"],
+    ("abstract,boolean,break,byte,case,catch,char,class,const,continue,debugger,default," +
+    "delete,do,double,else,enum,export,extends,false,final,finally,float,for,function,goto," +
+    "if,implements,import,ininstanceof,intinterface,long,native,new,null,package,private," +
+    "protected,public,return,short,static,super,switch,synchronized,this,throw,throws," +
+    "transient,true,try,typeof,var,volatile,void,undefined,while,with").split(/,/),
   function(key){ JS_KEYWORDS[key] = true;}
 );
 function getterFn(path){
@@ -2916,20 +3040,77 @@ defineApi('Date', [angularGlobal, angularDate]);
 //IE bug
 angular['Date']['toString'] = angularDate['toString'];
 defineApi('Function', [angularGlobal, angularCollection, angularFunction]);
+/**
+ * @ngdoc filter
+ * @name angular.filter.currency
+ * @function
+ *
+ * @description
+ *   Formats a number as a currency (ie $1,234.56).
+ *
+ * @param {number} amount Input to filter.
+ * @returns {string} Formated number.
+ *
+ * @css ng-format-negative
+ *   When the value is negative, this css class is applied to the binding making it by default red.
+ *
+ * @example
+     <input type="text" name="amount" value="1234.56"/> <br/>
+     {{amount | currency}}
+ *
+ * @scenario
+     it('should init with 1234.56', function(){
+       expect(binding('amount | currency')).toBe('$1,234.56');
+     });
+     it('should update', function(){
+       input('amount').enter('-1234');
+       expect(binding('amount | currency')).toBe('$-1,234.00');
+       // TODO: implement
+       // expect(binding('amount')).toHaveColor('red'); //what about toHaveCssClass instead?
+     });
+ */
 angularFilter.currency = function(amount){
   this.$element.toggleClass('ng-format-negative', amount < 0);
   return '$' + angularFilter['number'].apply(this, [amount, 2]);
 };
 
-angularFilter.number = function(amount, fractionSize){
-  if (isNaN(amount) || !isFinite(amount)) {
+/**
+ * @ngdoc filter
+ * @name angular.filter.number
+ * @function
+ *
+ * @description
+ *   Formats a number as text.
+ *
+ *   If the input is not a number empty string is returned.
+ *
+ * @param {(number|string)} number Number to format.
+ * @param {(number|string)=} [fractionSize=2] Number of decimal places to round the number to. Default 2.
+ * @returns {string} Number rounded to decimalPlaces and places a “,” after each third digit.
+ *
+ * @example
+     <span ng:non-bindable>{{1234.56789 | number}}</span>: {{1234.56789 | number}}<br/>
+     <span ng:non-bindable>{{1234.56789 | number:0}}</span>: {{1234.56789 | number:0}}<br/>
+     <span ng:non-bindable>{{1234.56789 | number:2}}</span>: {{1234.56789 | number:2}}<br/>
+     <span ng:non-bindable>{{-1234.56789 | number:4}}</span>: {{-1234.56789 | number:4}}
+ *
+ * @scenario
+     it('should format numbers', function(){
+       expect(binding('1234.56789 | number')).toBe('1,234.57');
+       expect(binding('1234.56789 | number:0')).toBe('1,235');
+       expect(binding('1234.56789 | number:2')).toBe('1,234.57');
+       expect(binding('-1234.56789 | number:4')).toBe('-1,234.5679');
+     });
+ */
+angularFilter.number = function(number, fractionSize){
+  if (isNaN(number) || !isFinite(number)) {
     return '';
   }
   fractionSize = typeof fractionSize == $undefined ? 2 : fractionSize;
-  var isNegative = amount < 0;
-  amount = Math.abs(amount);
+  var isNegative = number < 0;
+  number = Math.abs(number);
   var pow = Math.pow(10, fractionSize);
-  var text = "" + Math.round(amount * pow);
+  var text = "" + Math.round(number * pow);
   var whole = text.substring(0, text.length - fractionSize);
   whole = whole || '0';
   var frc = text.substring(text.length - fractionSize);
@@ -2948,6 +3129,8 @@ angularFilter.number = function(amount, fractionSize){
   }
   return text;
 };
+
+
 function padNumber(num, digits, trim) {
   var neg = '';
   if (num < 0) {
@@ -2960,6 +3143,8 @@ function padNumber(num, digits, trim) {
     num = num.substr(num.length - digits);
   return neg + num;
 }
+
+
 function dateGetter(name, size, offset, trim) {
   return function(date) {
     var value = date['get' + name]();
@@ -2969,6 +3154,8 @@ function dateGetter(name, size, offset, trim) {
     return padNumber(value, size, trim);
   };
 }
+
+
 var DATE_FORMATS = {
   yyyy: dateGetter('FullYear', 4),
   yy:   dateGetter('FullYear', 2, 0, true),
@@ -2984,15 +3171,64 @@ var DATE_FORMATS = {
    m:   dateGetter('Minutes', 1),
   ss:   dateGetter('Seconds', 2),
    s:   dateGetter('Seconds', 1),
-  a:    function(date){return date.getHours() < 12 ? 'am' : 'pm'; },
+  a:    function(date){return date.getHours() < 12 ? 'am' : 'pm';},
   Z:    function(date){
           var offset = date.getTimezoneOffset();
           return padNumber(offset / 60, 2) + padNumber(Math.abs(offset % 60), 2);
         }
 };
+
+
 var DATE_FORMATS_SPLIT = /([^yMdHhmsaZ]*)(y+|M+|d+|H+|h+|m+|s+|a|Z)(.*)/;
 var NUMBER_STRING = /^\d+$/;
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.date
+ * @function
+ *
+ * @description
+ *   Formats `date` to a string based on the requested `format`.
+ *
+ *   `format` string can be composed of the following elements:
+ *
+ *   * `'yyyy'`: 4 digit representation of year e.g. 2010
+ *   * `'yy'`: 2 digit representation of year, padded (00-99)
+ *   * `'MM'`: Month in year, padded (01‒12)
+ *   * `'M'`: Month in year (1‒12)
+ *   * `'dd'`: Day in month, padded (01‒31)
+ *   * `'d'`: Day in month (1-31)
+ *   * `'HH'`: Hour in day, padded (00‒23)
+ *   * `'H'`: Hour in day (0-23)
+ *   * `'hh'`: Hour in am/pm, padded (01‒12)
+ *   * `'h'`: Hour in am/pm, (1-12)
+ *   * `'mm'`: Minute in hour, padded (00‒59)
+ *   * `'m'`: Minute in hour (0-59)
+ *   * `'ss'`: Second in minute, padded (00‒59)
+ *   * `'s'`: Second in minute (0‒59)
+ *   * `'a'`: am/pm marker
+ *   * `'Z'`: 4 digit (+sign) representation of the timezone offset (-1200‒1200)
+ *
+ * @param {(Date|number|string)} date Date to format either as Date object or milliseconds.
+ * @param {string=} format Formatting rules. If not specified, Date#toLocaleDateString is used.
+ * @returns {string} Formatted string or the input if input is not recognized as date/millis.
+ *
+ * @example
+     <span ng:non-bindable>{{1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'}}</span>:
+        {{1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'}}<br/>
+     <span ng:non-bindable>{{1288323623006 | date:'MM/dd/yyyy @ h:mma'}}</span>:
+        {{'1288323623006' | date:'MM/dd/yyyy @ h:mma'}}<br/>
+ *
+ * @scenario
+     it('should format date', function(){
+       expect(binding("1288323623006 | date:'yyyy-MM-dd HH:mm:ss Z'")).
+          toMatch(/2010\-10\-2\d \d{2}:\d{2}:\d{2} \-?\d{4}/);
+       expect(binding("'1288323623006' | date:'MM/dd/yyyy @ h:mma'")).
+          toMatch(/10\/2\d\/2010 @ \d{1,2}:\d{2}(am|pm)/);
+     });
+ *
+ */
 angularFilter.date = function(date, format) {
   if (isString(date) && NUMBER_STRING.test(date)) {
     date = parseInt(date, 10);
@@ -3020,29 +3256,217 @@ angularFilter.date = function(date, format) {
   return text;
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.json
+ * @function
+ *
+ * @description
+ *   Allows you to convert a JavaScript object into JSON string.
+ *
+ *   This filter is mostly useful for debugging. When using the double curly {{value}} notation
+ *   the binding is automatically converted to JSON.
+ *
+ * @param {*} object Any JavaScript object (including arrays and primitive types) to filter.
+ * @returns {string} JSON string.
+ *
+ * @css ng-monospace Always applied to the encapsulating element.
+ *
+ * @example
+     <span ng:non-bindable>{{ {a:1, b:[]} | json }}</span>: <pre>{{ {a:1, b:[]} | json }}</pre>
+ *
+ * @scenario
+     it('should jsonify filtered objects', function() {
+       expect(binding('{{ {a:1, b:[]} | json')).toBe('{\n  "a":1,\n  "b":[]}');
+     });
+ *
+ */
 angularFilter.json = function(object) {
   this.$element.addClass("ng-monospace");
   return toJson(object, true);
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.lowercase
+ * @function
+ *
+ * @see angular.lowercase
+ */
 angularFilter.lowercase = lowercase;
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.uppercase
+ * @function
+ *
+ * @see angular.uppercase
+ */
 angularFilter.uppercase = uppercase;
 
-/**</>
- * @exportedAs filter:html
- * @param {string=} option if 'unsafe' then do not sanitize the HTML input
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.html
+ * @function
+ *
+ * @description
+ *   Prevents the input from getting escaped by angular. By default the input is sanitized and
+ *   inserted into the DOM as is.
+ *
+ *   The input is sanitized by parsing the html into tokens. All safe tokens (from a whitelist) are
+ *   then serialized back to properly escaped html string. This means that no unsafe input can make
+ *   it into the returned string, however since our parser is more strict than a typical browser
+ *   parser, it's possible that some obscure input, which would be recognized as valid HTML by a
+ *   browser, won't make it through the sanitizer.
+ *
+ *   If you hate your users, you may call the filter with optional 'unsafe' argument, which bypasses
+ *   the html sanitizer, but makes your application vulnerable to XSS and other attacks. Using this
+ *   option is strongly discouraged and should be used only if you absolutely trust the input being
+ *   filtered and you can't get the content through the sanitizer.
+ *
+ * @param {string} html Html input.
+ * @param {string=} option If 'unsafe' then do not sanitize the HTML input.
+ * @returns {string} Sanitized or raw html.
+ *
+ * @example
+     Snippet: <textarea name="snippet" cols="60" rows="3">
+&lt;p style="color:blue"&gt;an html
+&lt;em onmouseover="this.textContent='PWN3D!'"&gt;click here&lt;/em&gt;
+snippet&lt;/p&gt;</textarea>
+     <table>
+       <tr>
+         <td>Filter</td>
+         <td>Source</td>
+         <td>Rendered</td>
+       </tr>
+       <tr id="html-filter">
+         <td>html filter</td>
+         <td>
+           <pre>&lt;div ng:bind="snippet | html"&gt;<br/>&lt;/div&gt;</pre>
+         </td>
+         <td>
+           <div ng:bind="snippet | html"></div>
+         </td>
+       </tr>
+       <tr id="escaped-html">
+         <td>no filter</td>
+         <td><pre>&lt;div ng:bind="snippet"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet"></div></td>
+       </tr>
+       <tr id="html-unsafe-filter">
+         <td>unsafe html filter</td>
+         <td><pre>&lt;div ng:bind="snippet | html:'unsafe'"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet | html:'unsafe'"></div></td>
+       </tr>
+     </table>
+ *
+ * @scenario
+     it('should sanitize the html snippet ', function(){
+       expect(using('#html-filter').binding('snippet | html')).
+         toBe('<p>an html\n<em>click here</em>\nsnippet</p>');
+     });
+
+     it ('should escape snippet without any filter', function() {
+       expect(using('#escaped-html').binding('snippet')).
+         toBe("&lt;p style=\"color:blue\"&gt;an html\n" +
+              "&lt;em onmouseover=\"this.textContent='PWN3D!'\"&gt;click here&lt;/em&gt;\n" +
+              "snippet&lt;/p&gt;");
+     });
+
+     it ('should inline raw snippet if filtered as unsafe', function() {
+       expect(using('#html-unsafe-filter').binding("snippet | html:'unsafe'")).
+         toBe("<p style=\"color:blue\">an html\n" +
+              "<em onmouseover=\"this.textContent='PWN3D!'\">click here</em>\n" +
+              "snippet</p>");
+     });
+
+     it('should update', function(){
+       textarea('snippet').enter('new <b>text</b>');
+       expect(using('#html-filter').binding('snippet | html')).toBe('new <b>text</b>');
+       expect(using('#escaped-html').binding('snippet')).toBe("new &lt;b&gt;text&lt;/b&gt;");
+       expect(using('#html-unsafe-filter').binding("snippet | html:'unsafe'")).toBe('new <b>text</b>');
+     });
  */
 angularFilter.html =  function(html, option){
   return new HTML(html, option);
 };
 
+
+/**
+ * @ngdoc filter
+ * @name angular.filter.linky
+ * @function
+ *
+ * @description
+ *   Finds links in text input and turns them into html links. Supports http/https/ftp/mailto and
+ *   plane email address links.
+ *
+ * @param {string} text Input text.
+ * @returns {string} Html-linkified text.
+ *
+ * @example
+     Snippet: <textarea name="snippet" cols="60" rows="3">
+Pretty text with some links:
+http://angularjs.org/,
+mailto:us@somewhere.org,
+another@somewhere.org,
+and one more: ftp://127.0.0.1/.</textarea>
+     <table>
+       <tr>
+         <td>Filter</td>
+         <td>Source</td>
+         <td>Rendered</td>
+       </tr>
+       <tr id="linky-filter">
+         <td>linky filter</td>
+         <td>
+           <pre>&lt;div ng:bind="snippet | linky"&gt;<br/>&lt;/div&gt;</pre>
+         </td>
+         <td>
+           <div ng:bind="snippet | linky"></div>
+         </td>
+       </tr>
+       <tr id="escaped-html">
+         <td>no filter</td>
+         <td><pre>&lt;div ng:bind="snippet"&gt;<br/>&lt;/div&gt;</pre></td>
+         <td><div ng:bind="snippet"></div></td>
+       </tr>
+     </table>
+ *
+ * @scenario
+     it('should linkify the snippet with urls', function(){
+       expect(using('#linky-filter').binding('snippet | linky')).
+         toBe('Pretty text with some links:\n' +
+              '<a href="http://angularjs.org/">http://angularjs.org/</a>,\n' +
+              '<a href="mailto:us@somewhere.org">us@somewhere.org</a>,\n' +
+              '<a href="mailto:another@somewhere.org">another@somewhere.org</a>,\n' +
+              'and one more: <a href="ftp://127.0.0.1/">ftp://127.0.0.1/</a>.');
+     });
+
+     it ('should not linkify snippet without the linky filter', function() {
+       expect(using('#escaped-html').binding('snippet')).
+         toBe("Pretty text with some links:\n" +
+              "http://angularjs.org/,\n" +
+              "mailto:us@somewhere.org,\n" +
+              "another@somewhere.org,\n" +
+              "and one more: ftp://127.0.0.1/.");
+     });
+
+     it('should update', function(){
+       textarea('snippet').enter('new http://link.');
+       expect(using('#linky-filter').binding('snippet | linky')).
+         toBe('new <a href="http://link">http://link</a>.');
+       expect(using('#escaped-html').binding('snippet')).toBe('new http://link.');
+     });
+ */
+//TODO: externalize all regexps
 angularFilter.linky = function(text){
   if (!text) return text;
-  function regExpEscape(text) {
-    return text.replace(/([\/\.\*\+\?\|\(\)\[\]\{\}\\])/g, '\\$1');
-  }
-  var URL = /(ftp|http|https|mailto):\/\/([^\(\)|\s]+)/;
+  var URL = /((ftp|https?):\/\/|(mailto:)?[A-Za-z0-9._%+-]+@)\S*[^\s\.\;\,\(\)\{\}\<\>]/;
   var match;
   var raw = text;
   var html = [];
@@ -3050,13 +3474,16 @@ angularFilter.linky = function(text){
   var url;
   var i;
   while (match=raw.match(URL)) {
-    url = match[0].replace(/[\.\;\,\(\)\{\}\<\>]$/,'');
-    i = raw.indexOf(url);
+    // We can not end in these as they are sometimes found at the end of the sentence
+    url = match[0];
+    // if we did not match ftp/http/mailto then assume mailto
+    if (match[2]==match[3]) url = 'mailto:' + url;
+    i = match.index;
     writer.chars(raw.substr(0, i));
     writer.start('a', {href:url});
-    writer.chars(url);
+    writer.chars(match[0].replace(/^mailto:/, ''));
     writer.end('a');
-    raw = raw.substring(i + url.length);
+    raw = raw.substring(i + match[0].length);
   }
   writer.chars(raw);
   return new HTML(html.join(''));
@@ -3247,12 +3674,14 @@ angularServiceInject("$document", function(window){
 angularServiceInject("$location", function(browser) {
   var scope = this,
       location = {toString:toString, update:update, updateHash: updateHash},
-      lastLocationHref = browser.getUrl(),
+      lastBrowserUrl = browser.getUrl(),
+      lastLocationHref,
       lastLocationHash;
 
-  browser.addPollFn(function(){
-    if (lastLocationHref !== browser.getUrl()) {
-      update(lastLocationHref = browser.getUrl());
+  browser.addPollFn(function() {
+    if (lastBrowserUrl != browser.getUrl()) {
+      update(lastBrowserUrl = browser.getUrl());
+      updateLastLocation();
       scope.$eval();
     }
   });
@@ -3260,8 +3689,8 @@ angularServiceInject("$location", function(browser) {
   this.$onEval(PRIORITY_FIRST, updateBrowser);
   this.$onEval(PRIORITY_LAST, updateBrowser);
 
-  update(lastLocationHref);
-  lastLocationHash = location.hash;
+  update(lastBrowserUrl);
+  updateLastLocation();
 
   return location;
 
@@ -3362,15 +3791,23 @@ angularServiceInject("$location", function(browser) {
   }
 
   /**
+   * Update information about last location
+   */
+  function updateLastLocation() {
+    lastLocationHref = location.href;
+    lastLocationHash = location.hash;
+  }
+
+  /**
    * If location has changed, update the browser
    * This method is called at the end of $eval() phase
    */
   function updateBrowser() {
     updateLocation();
 
-    if (location.href != lastLocationHref) {
-      browser.setUrl(lastLocationHref = location.href);
-      lastLocationHash = location.hash;
+    if (location.href != lastLocationHref) {    	
+      browser.setUrl(lastBrowserUrl = location.href);
+      updateLastLocation();
     }
   }
 
@@ -3411,7 +3848,7 @@ angularServiceInject("$location", function(browser) {
     var match = URL_MATCH.exec(href);
 
     if (match) {
-      loc.href = href.replace('#$', '');
+      loc.href = href.replace(/#$/, '');
       loc.protocol = match[1];
       loc.host = match[3] || '';
       loc.port = match[5] || DEFAULT_PORTS[loc.protocol] || _null;
@@ -3897,7 +4334,8 @@ angularDirective("ng:eval", function(expression){
   };
 });
 
-angularDirective("ng:bind", function(expression){
+angularDirective("ng:bind", function(expression, element){
+  element.addClass('ng-binding');
   return function(element) {
     var lastValue = noop, lastError = noop;
     this.$onEval(function() {
@@ -3972,7 +4410,8 @@ function compileBindTemplate(template){
   return fn;
 }
 
-angularDirective("ng:bind-template", function(expression){
+angularDirective("ng:bind-template", function(expression, element){
+  element.addClass('ng-binding');
   var templateFn = compileBindTemplate(expression);
   return function(element) {
     var lastValue;
@@ -4267,6 +4706,10 @@ angularAttrMarkup('{{}}', function(value, name, element){
     element.attr(NG_BIND_ATTR, toJson(bindAttr));
   }
 });
+/**
+ *
+ */
+
 function modelAccessor(scope, element) {
   var expr = element.attr('name');
   if (!expr) throw "Required field 'name' not found.";
@@ -4509,6 +4952,16 @@ angularWidget('option', function(){
 });
 
 
+/*ng:doc
+ * @type widget
+ * @name ng:include
+ *
+ * @description
+ *
+ * @example
+ *
+ * @scenario
+ */
 angularWidget('ng:include', function(element){
   var compiler = this,
       srcExp = element.attr("src"),
