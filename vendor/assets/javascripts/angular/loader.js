@@ -1,5 +1,5 @@
 /**
- * @license AngularJS v1.0.8
+ * @license AngularJS v1.1.0
  * (c) 2010-2012 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -36,8 +36,8 @@ function setupModuleLoader(window) {
      *
      * # Module
      *
-     * A module is a collection of services, directives, filters, and configuration information.
-     * `angular.module` is used to configure the {@link AUTO.$injector $injector}.
+     * A module is a collocation of services, directives, filters, and configure information. Module
+     * is used to configure the {@link AUTO.$injector $injector}.
      *
      * <pre>
      * // Create a new module
@@ -67,7 +67,7 @@ function setupModuleLoader(window) {
      * @param {!string} name The name of the module to create or retrieve.
      * @param {Array.<string>=} requires If specified then new module is being created. If unspecified then the
      *        the module is being retrieved for further configuration.
-     * @param {Function} configFn Optional configuration function for the module. Same as
+     * @param {Function} configFn Option configuration function for the module. Same as
      *        {@link angular.Module#config Module#config()}.
      * @returns {module} new module with the {@link angular.Module} api.
      */
@@ -222,8 +222,8 @@ function setupModuleLoader(window) {
            * @param {Function} initializationFn Execute this function after injector creation.
            *    Useful for application initialization.
            * @description
-           * Use this method to register work which should be performed when the injector is done
-           * loading all modules.
+           * Use this method to register work which needs to be performed when the injector with
+           * with the current module is finished loading.
            */
           run: function(block) {
             runBlocks.push(block);
@@ -254,7 +254,6 @@ function setupModuleLoader(window) {
   });
 
 }
-
 )(window);
 
 /**
