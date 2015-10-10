@@ -1,5 +1,5 @@
 module Angular
   module Rails
-    VERSION = '0.10.6'
+    VERSION = '1.0.0rc1'
   end
 end
