@@ -18,6 +18,12 @@ task :upgrade_stable, [:version, :beta] do |_t, args|
   updater.build
 end
 
+task :bump, [:beta] do |_t, args|
+  beta = args[:beta] || false
+  updater = Angular::Updater.bump(beta: beta)
+  updater.build
+end
+
 desc 'Clean Angular JS assets'
 task :clean do
   Angular::Updater.clean

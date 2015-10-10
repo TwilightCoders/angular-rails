@@ -14,15 +14,31 @@ module Angular
     ROOT_PATH = Pathname.new('vendor/assets/javascripts/angular')
     I18N_PATH = Pathname.new('vendor/assets/javascripts/angular/i18n')
 
+    def self.bump(beta: nil)
+      version = Versionomy.parse(Angular::Rails::VERSION)
+      beta = version.release_type != :final if beta.nil?
+
+      list = if beta
+        Angular.upstream_versions
+      else
+        Angular.stable_versions
+      end
+
+      index = list.find_index(version)
+      bump = list.at(index + 1)
+
+      self.new(version: bump.to_s, beta: beta)
+    end
+
     def initialize(version: nil, beta: nil)
-      @beta = to_bool(beta)
+      @beta = Updater.to_bool(beta)
       check_version(version, @beta)
     end
 
     def check_version(version=nil, beta=nil)
       version = !version.to_s.strip.split(//).empty? ? version : Angular.latest_version(beta)
 
-      @version = case to_bool(beta)
+      @version = case Updater.to_bool(beta)
       when true
         find_version version, Angular.beta_versions
       when false
@@ -74,7 +90,7 @@ module Angular
 
     private
 
-    def to_bool(s)
+    def self.to_bool(s)
       return nil unless s.class == String
       return true if s =~ /^(true|t|yes|y|1)$/i
       return false if s.empty? || s =~ /^(false|f|no|n|0)$/i
@@ -82,6 +98,7 @@ module Angular
     end
 
     def write_gem_version
+      # /(\d(?:\.\d){0,2})(.*)/
       version_file = Pathname.new('lib/angular/rails/version.rb')
       content = version_file.read
       version_line = content.lines.find { |l| l =~ /^\s+#{version_constant_name}/ }
