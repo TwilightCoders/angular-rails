@@ -6347,6 +6347,52 @@ var _undefined        = undefined,
     _                 = window['_'],
     /** holds major version number for IE or NaN for real browsers */
     msie              = parseInt((/msie (\d+)/.exec(lowercase(navigator.userAgent)) || [])[1], 10),
+
+    /**
+     * @workInProgress
+     * @ngdoc function
+     * @name angular.element
+     * @function
+     *
+     * @description
+     * Wraps a raw DOM element or HTML string as [jQuery](http://jquery.com) element.
+     * `angular.element` is either an alias for [jQuery](http://api.jquery.com/jQuery/) function if
+     * jQuery is loaded or a function that wraps the element or string in angular's jQuery lite
+     * implementation.
+     *
+     * Real jQuery always takes precedence if it was loaded before angular.
+     *
+     * Angular's jQuery lite implementation is a tiny API-compatible subset of jQuery which allows
+     * angular to manipulate DOM.  The functions implemented are usually just the basic versions of
+     * them and might not support arguments and invocation styles.
+     *
+     * NOTE: All element references in angular are always wrapped with jQuery (lite) and are never
+     * raw DOM references.
+     *
+     * Angular's jQuery lite implements these functions:
+     *
+     * - [addClass()](http://api.jquery.com/addClass/)
+     * - [after()](http://api.jquery.com/after/)
+     * - [append()](http://api.jquery.com/append/)
+     * - [attr()](http://api.jquery.com/attr/)
+     * - [bind()](http://api.jquery.com/bind/)
+     * - [children()](http://api.jquery.com/children/)
+     * - [clone()](http://api.jquery.com/clone/)
+     * - [css()](http://api.jquery.com/css/)
+     * - [data()](http://api.jquery.com/data/)
+     * - [hasClass()](http://api.jquery.com/hasClass/)
+     * - [parent()](http://api.jquery.com/parent/)
+     * - [remove()](http://api.jquery.com/remove/)
+     * - [removeAttr()](http://api.jquery.com/removeAttr/)
+     * - [removeClass()](http://api.jquery.com/removeClass/)
+     * - [removeData()](http://api.jquery.com/removeData/)
+     * - [replaceWith()](http://api.jquery.com/replaceWith/)
+     * - [text()](http://api.jquery.com/text/)
+     * - [trigger()](http://api.jquery.com/trigger/)
+     *
+     * @param {string|DOMElement} element HTML string or DOMElement to be wrapped into jQuery.
+     * @returns {Object} jQuery object.
+     */
     jqLite            = jQuery || jqLiteWrap,
     slice             = Array.prototype.slice,
     push              = Array.prototype.push,
@@ -6744,16 +6790,17 @@ var _undefined        = undefined,
      * Each service could have dependencies (other services), which are passed in constructor.
      * Because JS is dynamicaly typed language, dependency injection can not use static types
      * to satisfy these dependencies, so each service must explicitely define its dependencies.
-     * This is done by $inject property.
+     * This is done by `$inject` property.
      * 
      * For now, life time of all services is the same as the life time of page.
      * 
      * 
-     * # Standard services
+     * # Built-in services
      * The Angular framework provides a standard set of services for common operations.
      * You can write your own services and rewrite these standard services as well.
-     * Like other core angular variables, standard services always start with $.
-     * 
+     * Like other core angular variables, the built-in services always start with $.
+     *
+     *   * `angular.service.$browser`
      *   * `angular.service.$window`
      *   * `angular.service.$document`
      *   * `angular.service.$location`
@@ -6770,21 +6817,160 @@ var _undefined        = undefined,
      *   * `angular.service.$cookies`
      *   * `angular.service.$cookieStore`
      * 
-     * # Writing your own services
+     * # Writing your own custom services
+     * Angular provides only set of basic services, so you will probably need to write your custom
+     * service very soon. To do so, you need to write a factory function and register this function
+     * to angular's dependency injector. This factory function must return an object - your service
+     * (it is not called with new operator).
+     * 
+     * **angular.service** has three parameters:
+     * 
+     *   - `{string} name` - Name of the service
+     *   - `{function()} factory` - Factory function (called just once by DI)
+     *   - `{Object} config` -  Hash of configuration (`$inject`, `$creation`)
+     * 
+     * If your service requires - depends on other services, you need to specify them 
+     * in config hash - property $inject. This property is an array of strings (service names).
+     * These dependencies will be passed as parameters to the factory function by DI.
+     * This approach is very useful when testing, as you can inject mocks/stubs/dummies.
+     * 
+     * Here is an example of very simple service. This service requires $window service (it's
+     * passed as a parameter to factory function) and it's just a function.
+     * 
+     * This service simple stores all notifications and after third one, it displays all of them by
+     * window alert.
      * <pre>
-     * angular.service('notify', function(location) {
-     *   this.one = function() {
-     *   }
-     * }, {$inject: ['$location']});
+       angular.service('notify', function(win) {
+         var msgs = [];
+         return function(msg) {
+           msgs.push(msg);
+           if (msgs.length == 3) {
+             win.alert(msgs.join("\n"));
+             msgs = [];
+           }
+         };
+       }, {$inject: ['$window']});
+     * </pre>
+     *  
+     * And here is a unit test for this service. We use Jasmine spy (mock) instead of real browser's alert.
+     * <pre>
+     * var mock, notify;
+     *
+     * beforeEach(function() {
+     *   mock = {alert: jasmine.createSpy()};
+     *   notify = angular.service('notify')(mock);
+     * });
+     *  
+     * it('should not alert first two notifications', function() {
+     *   notify('one');
+     *   notify('two');
+     *   expect(mock.alert).not.toHaveBeenCalled();
+     * });
+     *
+     * it('should alert all after third notification', function() {
+     *   notify('one');
+     *   notify('two');
+     *   notify('three');
+     *   expect(mock.alert).toHaveBeenCalledWith("one\ntwo\nthree");
+     * });
+     *
+     * it('should clear messages after alert', function() {
+     *   notify('one');
+     *   notify('two');
+     *   notify('third');
+     *   notify('more');
+     *   notify('two');
+     *   notify('third');
+     *   expect(mock.alert.callCount).toEqual(2);
+     *   expect(mock.alert.mostRecentCall.args).toEqual(["more\ntwo\nthird"]);
+     * });
+     * </pre>
+     *
+     * # Injecting services into controllers
+     * Using services in a controllers is very similar to using service in other service.
+     * Again, we will use dependency injection.
+     * 
+     * JavaScript is dynamic language, so DI is not able to figure out which services to inject by
+     * static types (like in static typed languages). Therefore you must specify the service name
+     * by the `$inject` property - it's an array that contains strings with names of services to be
+     * injected. The name must match the id that service has been registered as with angular.
+     * The order of the services in the array matters, because this order will be used when calling
+     * the factory function with injected parameters. The names of parameters in factory function
+     * don't matter, but by convention they match the service ids.
+     * <pre>
+     * function myController($loc, $log) {
+     *   this.firstMethod = function() {
+     *     // use $location service
+     *     $loc.setHash();
+     *   };
+     *   this.secondMethod = function() {
+     *     // use $log service
+     *     $log.info('...');
+     *   };
+     * }
+     * // which services to inject ?
+     * myController.$inject = ['$location', '$log']; 
      * </pre>
      * 
-     * # Using services in controller
+     * @example
+     * <script type="text/javascript">
+     *  angular.service('notify', function(win) {
+     *    var msgs = [];
+     *    return function(msg) {
+     *      msgs.push(msg);
+     *      if (msgs.length == 3) {
+     *        win.alert(msgs.join("\n"));
+     *        msgs = [];
+     *      }
+     *    };
+     *  }, {$inject: ['$window']});
+     *  
+     *  function myController(notifyService) {
+     *    this.callNotify = function(msg) {
+     *      notifyService(msg);
+     *    };
+     *  }
+     *  
+     *  myController.$inject = ['notify'];
+     * </script>
+     * 
+     * <div ng:controller="myController">
+     * <p>Let's try this simple notify service, injected into the controller...</p>
+     * <input ng:init="message='test'" type="text" name="message" />
+     * <button ng:click="callNotify(message);">NOTIFY</button>
+     * </div>
      */
     angularService    = extensionMap(angular, 'service'),
     angularCallbacks  = extensionMap(angular, 'callbacks'),
     nodeName,
     rngScript         = /^(|.*\/)angular(-.*?)?(\.min)?.js(\?[^#]*)?(#(.*))?$/;
 
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.foreach
+ * @function
+ *
+ * @description
+ * Invokes the `iterator` function once for each item in `obj` collection. The collection can either
+ * be an object or an array. The `iterator` function is invoked with `iterator(value, key)`, where
+ * `value` is the value of an object property or an array element and `key` is the object property
+ * key or array element index. Optionally, `context` can be specified for the iterator function.
+ *
+   <pre>
+     var values = {name: 'misko', gender: 'male'};
+     var log = [];
+     angular.foreach(values, function(value, key){
+       this.push(key + ': ' + value);
+     }, log);
+     expect(log).toEqual(['name: misko', 'gender:male']);
+   </pre>
+ *
+ * @param {Object|Array} obj Object to iterate over.
+ * @param {function()} iterator Iterator function.
+ * @param {Object} context Object to become context (`this`) for the iterator function.
+ * @returns {Objet|Array} Reference to `obj`.
+ */
 function foreach(obj, iterator, context) {
   var key;
   if (obj) {
@@ -6830,6 +7016,19 @@ function formatError(arg) {
 }
 
 
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.extend
+ * @function
+ *
+ * @description
+ * Extends the destination object `dst` by copying all of the properties from the `src` objects to
+ * `dst`. You can specify multiple `src` objects.
+ *
+ * @param {Object} dst The destination object.
+ * @param {...Object} src The source object(s).
+ */
 function extend(dst) {
   foreach(arguments, function(obj){
     if (obj !== dst) {
@@ -6841,13 +7040,52 @@ function extend(dst) {
   return dst;
 }
 
+
 function inherit(parent, extra) {
   return extend(new (extend(function(){}, {prototype:parent}))(), extra);
 }
 
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.noop
+ * @function
+ *
+ * @description
+ * Empty function that performs no operation whatsoever. This function is useful when writing code
+ * in the functional style.
+   <pre>
+     function foo(callback) {
+       var result = calculateResult();
+       (callback || angular.noop)(result);
+     }
+   </pre>
+ */
 function noop() {}
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.identity
+ * @function
+ *
+ * @description
+ * A function that does nothing except for returning its first argument. This function is useful
+ * when writing code in the functional style.
+ *
+   <pre>
+     function transformer(transformationFn, value) {
+       return (transformationFn || identity)(value);
+     };
+   </pre>
+ */
 function identity($) {return $;}
+
+
 function valueFn(value) {return function(){ return value; };}
+
 
 function extensionMap(angular, name, transform) {
   var extPoint;
@@ -6879,14 +7117,129 @@ function jqLiteWrap(element) {
   }
   return element;
 }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isUndefined
+ * @function
+ *
+ * @description
+ * Checks if a reference is undefined.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is undefined.
+ */
 function isUndefined(value){ return typeof value == $undefined; }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isDefined
+ * @function
+ *
+ * @description
+ * Checks if a reference is defined.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is defined.
+ */
 function isDefined(value){ return typeof value != $undefined; }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isObject
+ * @function
+ *
+ * @description
+ * Checks if a reference is an `Object`. Unlike in JavaScript `null`s are not considered to be
+ * objects.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is an `Object` but not `null`.
+ */
 function isObject(value){ return value!=_null && typeof value == $object;}
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isString
+ * @function
+ *
+ * @description
+ * Checks if a reference is a `String`.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is a `String`.
+ */
 function isString(value){ return typeof value == $string;}
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isNumber
+ * @function
+ *
+ * @description
+ * Checks if a reference is a `Number`.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is a `Number`.
+ */
 function isNumber(value){ return typeof value == $number;}
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isDate
+ * @function
+ *
+ * @description
+ * Checks if a reference is defined.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is a `Date`.
+ */
 function isDate(value){ return value instanceof Date; }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isArray
+ * @function
+ *
+ * @description
+ * Checks if a reference is an `Array`.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is an `Array`.
+ */
 function isArray(value) { return value instanceof Array; }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.isFunction
+ * @function
+ *
+ * @description
+ * Checks if a reference is a `Function`.
+ *
+ * @param {*} value Reference to check.
+ * @returns {boolean} True if `value` is a `Function`.
+ */
 function isFunction(value){ return typeof value == $function;}
+
+
 function isBoolean(value) { return typeof value == $boolean;}
 function isTextNode(node) { return nodeName(node) == '#text'; }
 function trim(value) { return isString(value) ? value.replace(/^\s*/, '').replace(/\s*$/, '') : value; }
@@ -6940,6 +7293,27 @@ function map(obj, iterator, context) {
   });
   return results;
 }
+
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.Object.size
+ * @function
+ *
+ * @description
+ * Determines the number of elements in an array or number of properties of an object.
+ *
+ * Note: this function is used to augment the Object type in angular expressions. See
+ * {@link angular.Object} for more info.
+ *
+ * @param {Object|Array} obj Object or array to inspect.
+ * @returns {number} The size of `obj` or `0` if `obj` is not an object or array.
+ *
+ * @example
+ * Number of items in array: {{ [1,2].$size() }}<br/>
+ * Number of items in object: {{ {a:1, b:2, c:3}.$size() }}<br/>
+ */
 function size(obj) {
   var size = 0;
   if (obj) {
@@ -6979,19 +7353,40 @@ function isLeafNode (node) {
 }
 
 /**
- * Copies stuff.
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.Object.copy
+ * @function
  *
- * If destination is not provided and source is an object or an array, a copy is created & returned,
- * otherwise the source is returned.
+ * @description
+ * Creates a deep copy of `source`.
  *
- * If destination is provided, all of its properties will be deleted and if source is an object or
- * an array, all of its members will be copied into the destination object. Finally the destination
- * is returned just for kicks.
+ * If `destination` is not provided and `source` is an object or an array, a copy is created &
+ * returned, otherwise the `source` is returned.
  *
- * @param {*} source The source to be used during copy.
- *                   Can be any type including primitives, null and undefined.
- * @param {(Object|Array)=} destination Optional destination into which the source is copied
- * @returns {*}
+ * If `destination` is provided, all of its properties will be deleted.
+ *
+ * If `source` is an object or an array, all of its members will be copied into the `destination`
+ * object.
+ *
+ * Note: this function is used to augment the Object type in angular expressions. See
+ * {@link angular.Object} for more info.
+ *
+ * @param {*} source The source to be used to make a copy.
+ *                   Can be any type including primitives, `null` and `undefined`.
+ * @param {(Object|Array)=} destination Optional destination into which the source is copied.
+ * @returns {*} The copy or updated `destination` if `destination` was specified.
+ *
+ * @example
+   Salutation: <input type="text" name="master.salutation" value="Hello" /><br/>
+   Name: <input type="text" name="master.name" value="world"/><br/>
+   <button ng:click="form = master.$copy()">copy</button>
+   <hr/>
+
+   Master is <span ng:hide="master.$equals(form)">NOT</span> same as form.
+
+   <pre>master={{master}}</pre>
+   <pre>form={{form}}</pre>
  */
 function copy(source, destination){
   if (!destination) {
@@ -7025,6 +7420,42 @@ function copy(source, destination){
   return destination;
 }
 
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.Object.equals
+ * @function
+ *
+ * @description
+ * Determines if two objects or value are equivalent.
+ *
+ * To be equivalent, they must pass `==` comparison or be of the same type and have all their
+ * properties pass `==` comparison.
+ *
+ * Supports values types, arrays and objects.
+ *
+ * For objects `function` properties and properties that start with `$` are not considered during
+ * comparisons.
+ *
+ * Note: this function is used to augment the Object type in angular expressions. See
+ * {@link angular.Object} for more info.
+ *
+ * @param {*} o1 Object or value to compare.
+ * @param {*} o2 Object or value to compare.
+ * @returns {boolean} True if arguments are equal.
+ *
+ * @example
+   Salutation: <input type="text" name="master.salutation" value="Hello" /><br/>
+   Name: <input type="text" name="master.name" value="world"/><br/>
+   <button ng:click="form = master.$copy()">copy</button>
+   <hr/>
+
+   Master is <span ng:hide="master.$equals(form)">NOT</span> same as form.
+
+   <pre>master={{master}}</pre>
+   <pre>form={{form}}</pre>
+ */
 function equals(o1, o2) {
   if (o1 == o2) return true;
   var t1 = typeof o1, t2 = typeof o2, length, key, keySet;
@@ -7088,6 +7519,23 @@ function concat(array1, array2, index) {
   return array1.concat(slice.call(array2, index, array2.length));
 }
 
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.bind
+ * @function
+ *
+ * @description
+ * Returns function which calls function `fn` bound to `self` (`self` becomes the `this` for `fn`).
+ * Optional `args` can be supplied which are prebound to the function, also known as
+ * [function currying](http://en.wikipedia.org/wiki/Currying).
+ *
+ * @param {Object} self Context in which `fn` should be evaluated in.
+ * @param {function()} fn Function to be bound.
+ * @param {(...*)=} args Optional arguments to be prebound to the `fn` function call.
+ * @returns {function()} Function that wraps the `fn` with all the specified bindings.
+ */
 function bind(self, fn) {
   var curryArgs = arguments.length > 2 ? slice.call(arguments, 2, arguments.length) : [];
   if (typeof fn == $function) {
@@ -7097,7 +7545,7 @@ function bind(self, fn) {
       return arguments.length ? fn.apply(self, arguments) : fn.call(self);
     };
   } else {
-    // in IE, native methods ore not functions and so they can not be bound (but they don't need to be)
+    // in IE, native methods are not functions and so they can not be bound (but they don't need to be)
     return fn;
   }
 }
@@ -7125,10 +7573,31 @@ function merge(src, dst) {
   }
 }
 
-function compile(element, existingScope) {
+
+/**
+ * @workInProgress
+ * @ngdoc function
+ * @name angular.compile
+ * @function
+ *
+ * @description
+ * Compiles a piece of HTML or DOM into a {@link angular.scope scope} object.
+   <pre>
+    var scope1 = angular.compile(window.document);
+    scope1.$init();
+
+    var scope2 = angular.compile('<div ng:click="clicked = true">click me</div>');
+    scope2.$init();
+   </pre>
+ *
+ * @param {string|DOMElement} element Element to compile.
+ * @param {Object=} parentScope Scope to become the parent scope of the newly compiled scope.
+ * @returns {Object} Compiled scope object.
+ */
+function compile(element, parentScope) {
   var compiler = new Compiler(angularTextMarkup, angularAttrMarkup, angularDirective, angularWidget),
       $element = jqLite(element);
-  return compiler.compile($element)($element, existingScope);
+  return compiler.compile($element)($element, parentScope);
 }
 /////////////////////////////////////////////////
 
@@ -7950,7 +8419,16 @@ function errorHandlerFor(element, error) {
  * Note: A widget that creates scopes (i.e. {@link angular.widget.@ng:repeat ng:repeat}) is
  * responsible for forwarding `$eval()` calls from the parent to those child scopes. That way,
  * calling $eval() on the root scope will update the whole page.
-
+ *
+ *
+ * @TODO THESE PARAMS AND RETURNS ARE NOT RENDERED IN THE TEMPLATE!! FIX THAT!
+ * @param {Object} parent The scope that should become the parent for the newly created scope.
+ * @param {Object.<string, function()>=} providers Map of service factory which need to be provided
+ *     for the current scope. Usually {@link angular.service}.
+ * @param {Object.<string, *>=} instanceCache Provides pre-instantiated services which should
+ *     append/override services provided by `providers`.
+ * @returns {Object} Newly created scope.
+ *
  *
  * @exampleDescription
  * This example demonstrates scope inheritance and property overriding.
@@ -8020,7 +8498,58 @@ function createScope(parent, providers, instanceCache) {
      * @param {function()} fn Function to be bound.
      */
     $bind: bind(instance, bind, instance),
+
+
+    /**
+     * @workInProgress
+     * @ngdoc function
+     * @name angular.scope.$get
+     * @function
+     *
+     * @description
+     * Returns the value for `property_chain` on the current scope. Unlike in JavaScript, if there
+     * are any `undefined` intermediary properties, `undefined` is returned instead of throwing an
+     * exception.
+     *
+       <pre>
+         var scope = angular.scope();
+         expect(scope.$get('person.name')).toEqual(undefined);
+         scope.person = {};
+         expect(scope.$get('person.name')).toEqual(undefined);
+         scope.person.name = 'misko';
+         expect(scope.$get('person.name')).toEqual('misko');
+       </pre>
+     *
+     * @param {string} property_chain String representing name of a scope property. Optionally
+     *     properties can be chained with `.` (dot), e.g. `'person.name.first'`
+     * @returns {*} Value for the (nested) property.
+     */
     $get: bind(instance, getter, instance),
+
+
+    /**
+     * @workInProgress
+     * @ngdoc function
+     * @name angular.scope.$set
+     * @function
+     *
+     * @description
+     * Assigns a value to a property of the current scope specified via `property_chain`. Unlike in
+     * JavaScript, if there are any `undefined` intermediary properties, empty objects are created
+     * and assigned in to them instead of throwing an exception.
+     *
+       <pre>
+         var scope = angular.scope();
+         expect(scope.person).toEqual(undefined);
+         scope.$set('person.name', 'misko');
+         expect(scope.person).toEqual({name:'misko'});
+         expect(scope.person.name).toEqual('misko');
+       </pre>
+     *
+     * @param {string} property_chain String representing name of a scope property. Optionally
+     *     properties can be chained with `.` (dot), e.g. `'person.name.first'`
+     * @param {*} value Value to assign to the scope property.
+     */
     $set: bind(instance, setter, instance),
 
 
@@ -8347,11 +8876,22 @@ function createScope(parent, providers, instanceCache) {
   return instance;
 }
 /**
- * Create an inject method
- * @param providerScope provider's "this"
- * @param providers a function(name) which returns provider function
- * @param cache place where instances are saved for reuse
- * @returns {Function}
+ * @ngdoc function
+ * @name angular.injector
+ * @function
+ *
+ * @description
+ * Creates an inject function that can be used for dependency injection.
+ *
+ * @param {Object=} [providerScope={}] provider's `this`
+ * @param {Object.<string, function()>=} [providers=angular.service] Map of provider (factory)
+ *     function.
+ * @param {Object.<string, function()>=} [cache={}] Place where instances are saved for reuse. Can
+ *     also be used to override services speciafied by `providers` (useful in tests).
+ * @returns {function()} Injector function.
+ *
+ * @TODO These docs need a lot of work. Specifically the returned function should be described in
+ *     great detail + we need to provide some examples.
  */
 function createInjector(providerScope, providers, cache) {
   providers = providers || angularService;
@@ -10065,6 +10605,26 @@ var angularGlobal = {
   }
 };
 
+
+/**
+ * @workInProgress
+ * @ngdoc overview
+ * @name angular.Object
+ * @function
+ *
+ * @description
+ * Utility functions for manipulation with JavaScript objects.
+ *
+ * These functions are exposed in two ways:
+ *
+ * - **in angular expressions**: the functions are bound to all objects and augment the Object
+ *   type. The names of these methods are prefixed with `$` character to minimize naming collisions.
+ *   To call a method, invoke the function without the first argument, e.g, `myObject.$foo(param2)`.
+ *
+ * - **in JavaScript code**: the functions don't augment the Object type and must be invoked as
+ *   functions of `angular.Object` as `angular.Object.foo(myObject, param2)`.
+ *
+ */
 var angularCollection = {
   'copy': copy,
   'size': size,
@@ -10073,8 +10633,121 @@ var angularCollection = {
 var angularObject = {
   'extend': extend
 };
+
+/**
+ * @workInProgress
+ * @ngdoc overview
+ * @name angular.Array
+ *
+ * @description
+ * Utility functions for manipulation with JavaScript Array objects.
+ *
+ * These functions are exposed in two ways:
+ *
+ * - **in angular expressions**: the functions are bound to the Array objects and augment the Array
+ *   type as array methods. The names of these methods are prefixed with `$` character to minimize
+ *   naming collisions. To call a method, invoke `myArrayObject.$foo(params)`.
+ *
+ * - **in JavaScript code**: the functions don't augment the Array type and must be invoked as
+ *   functions of `angular.Array` as `angular.Array.foo(myArrayObject, params)`.
+ *
+ */
 var angularArray = {
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.indexOf
+   * @function
+   *
+   * @description
+   * Determines the index of `value` in `array`.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array Array to search.
+   * @param {*} value Value to search for.
+   * @returns {number} The position of the element in `array`. The position is 0-based. `-1` is returned if the value can't be found.
+   *
+   * @example
+     <div ng:init="books = ['Moby Dick', 'Great Gatsby', 'Romeo and Juliet']"></div>
+     <input name='bookName' value='Romeo and Juliet'> <br>
+     Index of '{{bookName}}' in the list {{books}} is <em>{{books.$indexOf(bookName)}}</em>.
+
+     @scenario
+     it('should correctly calculate the initial index', function() {
+       expect(binding('books.$indexOf(bookName)')).toBe('2');
+     });
+
+     it('should recalculate', function() {
+       input('bookName').enter('foo');
+       expect(binding('books.$indexOf(bookName)')).toBe('-1');
+
+       input('bookName').enter('Moby Dick');
+       expect(binding('books.$indexOf(bookName)')).toBe('0');
+     });
+   */
   'indexOf': indexOf,
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.sum
+   * @function
+   *
+   * @description
+   * This function calculates the sum of all numbers in `array`. If the `expressions` is supplied,
+   * it is evaluated once for each element in `array` and then the sum of these values is returned.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array The source array.
+   * @param {(string|function())=} expression Angular expression or a function to be evaluated for each
+   *     element in `array`. The array element becomes the `this` during the evaluation.
+   * @returns {number} Sum of items in the array.
+   *
+   * @example
+     <table ng:init="invoice= {items:[{qty:10, description:'gadget', cost:9.95}]}">
+       <tr><th>Qty</th><th>Description</th><th>Cost</th><th>Total</th><th></th></tr>
+       <tr ng:repeat="item in invoice.items">
+         <td><input name="item.qty" value="1" size="4" ng:required ng:validate="integer"></td>
+        <td><input name="item.description"></td>
+          <td><input name="item.cost" value="0.00" ng:required ng:validate="number" size="6"></td>
+         <td>{{item.qty * item.cost | currency}}</td>
+         <td>[<a href ng:click="invoice.items.$remove(item)">X</a>]</td>
+       </tr>
+       <tr>
+         <td><a href ng:click="invoice.items.$add()">add item</a></td>
+         <td></td>
+         <td>Total:</td>
+         <td>{{invoice.items.$sum('qty*cost') | currency}}</td>
+       </tr>
+     </table>
+
+     @scenario
+     //TODO: these specs are lame because I had to work around issues #164 and #167
+     it('should initialize and calculate the totals', function() {
+       expect(repeater('.doc-example-live table tr', 'item in invoice.items').count()).toBe(3);
+       expect(repeater('.doc-example-live table tr', 'item in invoice.items').row(1)).
+         toEqual(['$99.50']);
+       expect(binding("invoice.items.$sum('qty*cost')")).toBe('$99.50');
+       expect(binding("invoice.items.$sum('qty*cost')")).toBe('$99.50');
+     });
+
+     it('should add an entry and recalculate', function() {
+       element('.doc-example a:contains("add item")').click();
+       using('.doc-example-live tr:nth-child(3)').input('item.qty').enter('20');
+       using('.doc-example-live tr:nth-child(3)').input('item.cost').enter('100');
+
+       expect(repeater('.doc-example-live table tr', 'item in invoice.items').row(2)).
+         toEqual(['$2,000.00']);
+       expect(binding("invoice.items.$sum('qty*cost')")).toBe('$2,099.50');
+     });
+   */
   'sum':function(array, expression) {
     var fn = angular['Function']['compile'](expression);
     var sum = 0;
@@ -10086,12 +10759,140 @@ var angularArray = {
     }
     return sum;
   },
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.remove
+   * @function
+   *
+   * @description
+   * Modifies `array` by removing an element from it. The element will be looked up using the
+   * {@link angular.Array.indexOf indexOf} function on the `array` and only the first instance of
+   * the element will be removed.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array Array from which an element should be removed.
+   * @param {*} value Element to be removed.
+   * @returns {*} The removed element.
+   *
+   * @example
+     <ul ng:init="tasks=['Learn Angular', 'Read Documentation',
+                         'Check out demos', 'Build cool applications']">
+       <li ng:repeat="task in tasks">
+         {{task}} [<a href="" ng:click="tasks.$remove(task)">X</a>]
+       </li>
+     </ul>
+     <hr/>
+     tasks = {{tasks}}
+
+     @scenario
+     it('should initialize the task list with for tasks', function() {
+       expect(repeater('.doc-example ul li', 'task in tasks').count()).toBe(4);
+       expect(repeater('.doc-example ul li', 'task in tasks').column('task')).
+         toEqual(['Learn Angular', 'Read Documentation', 'Check out demos',
+                  'Build cool applications']);
+     });
+
+     it('should initialize the task list with for tasks', function() {
+       element('.doc-example ul li a:contains("X"):first').click();
+       expect(repeater('.doc-example ul li', 'task in tasks').count()).toBe(3);
+
+       element('.doc-example ul li a:contains("X"):last').click();
+       expect(repeater('.doc-example ul li', 'task in tasks').count()).toBe(2);
+
+       expect(repeater('.doc-example ul li', 'task in tasks').column('task')).
+         toEqual(['Read Documentation', 'Check out demos']);
+     });
+   */
   'remove':function(array, value) {
     var index = indexOf(array, value);
     if (index >=0)
       array.splice(index, 1);
     return value;
   },
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.filter
+   * @function
+   *
+   * @description
+   * Selects a subset of items from `array` and returns it as a new array.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array The source array.
+   * @param {string|Object|function()} expression The predicate to be used for selecting items from
+   *   `array`.
+   *
+   *   Can be one of:
+   *
+   *   - `string`: Predicate that results in a substring match using the value of `expression`
+   *     string. All strings or objects with string properties in `array` that contain this string
+   *     will be returned. The predicate can be negated by prefixing the string with `!`.
+   *
+   *   - `Object`: A pattern object can be used to filter specific properties on objects contained
+   *     by `array`. For example `{name:"M", phone:"1"}` predicate will return an array of items
+   *     which have property `name` containing "M" and property `phone` containing "1". A special
+   *     property name `$` can be used (as in `{$:"text"}`) to accept a match against any
+   *     property of the object. That's equivalent to the simple substring match with a `string`
+   *     as described above.
+   *
+   *   - `function`: A predicate function can be used to write arbitrary filters. The function is
+   *     called for each element of `array`. The final result is an array of those elements that
+   *     the predicate returned true for.
+   *
+   * @example
+     <div ng:init="friends = [{name:'John', phone:'555-1276'},
+                              {name:'Mary', phone:'800-BIG-MARY'},
+                              {name:'Mike', phone:'555-4321'},
+                              {name:'Adam', phone:'555-5678'},
+                              {name:'Julie', phone:'555-8765'}]"></div>
+
+     Search: <input name="searchText"/>
+     <table id="searchTextResults">
+       <tr><th>Name</th><th>Phone</th><tr>
+       <tr ng:repeat="friend in friends.$filter(searchText)">
+         <td>{{friend.name}}</td>
+         <td>{{friend.phone}}</td>
+       <tr>
+     </table>
+     <hr>
+     Any: <input name="search.$"/> <br>
+     Name only <input name="search.name"/><br>
+     Phone only <input name="search.phone"/><br>
+     <table id="searchObjResults">
+       <tr><th>Name</th><th>Phone</th><tr>
+       <tr ng:repeat="friend in friends.$filter(search)">
+         <td>{{friend.name}}</td>
+         <td>{{friend.phone}}</td>
+       <tr>
+     </table>
+
+     @scenario
+     it('should search across all fields when filtering with a string', function() {
+       input('searchText').enter('m');
+       expect(repeater('#searchTextResults tr', 'friend in friends').column('name')).
+         toEqual(['Mary', 'Mike', 'Adam']);
+
+       input('searchText').enter('76');
+       expect(repeater('#searchTextResults tr', 'friend in friends').column('name')).
+         toEqual(['John', 'Julie']);
+     });
+
+     it('should search in specific fields when filtering with a predicate object', function() {
+       input('search.$').enter('i');
+       expect(repeater('#searchObjResults tr', 'friend in friends').column('name')).
+         toEqual(['Mary', 'Mike', 'Julie']);
+     });
+   */
   'filter':function(array, expression) {
     var predicates = [];
     predicates.check = function(value) {
@@ -10171,10 +10972,124 @@ var angularArray = {
     }
     return filtered;
   },
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.add
+   * @function
+   *
+   * @description
+   * `add` is a function similar to JavaScript's `Array#push` method, in that it appends a new
+   * element to an array, but it differs in that the value being added is optional and defaults to
+   * an emty object.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array The array expand.
+   * @param {*=} [value={}] The value to be added.
+   * @returns {Array} The expanded array.
+   *
+   * @exampleDescription
+   * This example shows how an initially empty array can be filled with objects created from user
+   * input via the `$add` method.
+   *
+   * @example
+     [<a href="" ng:click="people.$add()">add empty</a>]
+     [<a href="" ng:click="people.$add({name:'John', sex:'male'})">add 'John'</a>]
+     [<a href="" ng:click="people.$add({name:'Mary', sex:'female'})">add 'Mary'</a>]
+
+     <ul ng:init="people=[]">
+       <li ng:repeat="person in people">
+         <input name="person.name">
+         <select name="person.sex">
+           <option value="">--chose one--</option>
+           <option>male</option>
+           <option>female</option>
+         </select>
+         [<a href="" ng:click="people.$remove(person)">X</a>]
+       </li>
+     </ul>
+     <pre>people = {{people}}</pre>
+
+     @scenario
+     beforeEach(function() {
+        expect(binding('people')).toBe('people = []');
+     });
+
+     it('should create an empty record when "add empty" is clicked', function() {
+       element('.doc-example a:contains("add empty")').click();
+       expect(binding('people')).toBe('people = [{\n  "name":"",\n  "sex":null}]');
+     });
+
+     it('should create a "John" record when "add \'John\'" is clicked', function() {
+       element('.doc-example a:contains("add \'John\'")').click();
+       expect(binding('people')).toBe('people = [{\n  "name":"John",\n  "sex":"male"}]');
+     });
+
+     it('should create a "Mary" record when "add \'Mary\'" is clicked', function() {
+       element('.doc-example a:contains("add \'Mary\'")').click();
+       expect(binding('people')).toBe('people = [{\n  "name":"Mary",\n  "sex":"female"}]');
+     });
+
+     it('should delete a record when "X" is clicked', function() {
+        element('.doc-example a:contains("add empty")').click();
+        element('.doc-example li a:contains("X"):first').click();
+        expect(binding('people')).toBe('people = []');
+     });
+   */
   'add':function(array, value) {
     array.push(isUndefined(value)? {} : value);
     return array;
   },
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.count
+   * @function
+   *
+   * @description
+   * Determines the number of elements in an array. Optionally it will count only those elements
+   * for which the `condition` evaluets to `true`.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array The array to count elements in.
+   * @param {(Function()|string)=} condition A function to be evaluated or angular expression to be
+   *     compiled and evaluated. The element that is currently being iterated over, is exposed to
+   *     the `condition` as `this`.
+   * @returns {number} Number of elements in the array (for which the condition evaluates to true).
+   *
+   * @example
+     <pre ng:init="items = [{name:'knife', points:1},
+                            {name:'fork', points:3},
+                            {name:'spoon', points:1}]"></pre>
+     <ul>
+       <li ng:repeat="item in items">
+          {{item.name}}: points=
+          <input type="text" name="item.points"/> <!-- id="item{{$index}} -->
+       </li>
+     </ul>
+     <p>Number of items which have one point: <em>{{ items.$count('points==1') }}</em></p>
+     <p>Number of items which have more than one point: <em>{{items.$count('points&gt;1')}}</em></p>
+
+     @scenario
+     it('should calculate counts', function() {
+       expect(binding('items.$count(\'points==1\')')).toEqual(2);
+       expect(binding('items.$count(\'points>1\')')).toEqual(1);
+     });
+
+     it('should recalculate when updated', function() {
+       using('.doc-example li:first-child').input('item.points').enter('23');
+       expect(binding('items.$count(\'points==1\')')).toEqual(1);
+       expect(binding('items.$count(\'points>1\')')).toEqual(2);
+     });
+   */
   'count':function(array, condition) {
     if (!condition) return array.length;
     var fn = angular['Function']['compile'](condition), count = 0;
@@ -10185,6 +11100,86 @@ var angularArray = {
     });
     return count;
   },
+
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.orderBy
+   * @function
+   *
+   * @description
+   * Orders `array` by the `expression` predicate.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array The array to sort.
+   * @param {function()|string|Array.<(function()|string)>} expression A predicate to be used by the
+   *    comparator to determine the order of elements.
+   *
+   *    Can be one of:
+   *
+   *    - `function`: JavaScript's Array#sort comparator function
+   *    - `string`: angular expression which evaluates to an object to order by, such as 'name' to
+   *      sort by a property called 'name'. Optionally prefixed with `+` or `-` to control ascending
+   *      or descending sort order (e.g. +name or -name).
+   *    - `Array`: array of function or string predicates, such that a first predicate in the array
+   *      is used for sorting, but when the items are equivalent next predicate is used.
+   *
+   * @param {boolean=} descend TODO
+   * @returns {Array} Sorted copy of the source array.
+   *
+   * @example
+     <div ng:init="friends = [{name:'John', phone:'555-1212', age:10},
+                              {name:'Mary', phone:'555-9876', age:19},
+                              {name:'Mike', phone:'555-4321', age:21},
+                              {name:'Adam', phone:'555-5678', age:35},
+                              {name:'Julie', phone:'555-8765', age:29}]"></div>
+
+     <pre>Sorting predicate = {{predicate}}</pre>
+     <hr/>
+     <table ng:init="predicate='-age'">
+       <tr>
+         <th><a href="" ng:click="predicate = 'name'">Name</a>
+             (<a href ng:click="predicate = '-name'">^</a>)</th>
+         <th><a href="" ng:click="predicate = 'phone'">Phone</a>
+             (<a href ng:click="predicate = '-phone'">^</a>)</th>
+         <th><a href="" ng:click="predicate = 'age'">Age</a>
+             (<a href ng:click="predicate = '-age'">^</a>)</th>
+       <tr>
+       <tr ng:repeat="friend in friends.$orderBy(predicate, true)">
+         <td>{{friend.name}}</td>
+         <td>{{friend.phone}}</td>
+         <td>{{friend.age}}</td>
+       <tr>
+     </table>
+
+     @scenario
+     it('should be reverse ordered by aged', function() {
+       expect(binding('predicate')).toBe('Sorting predicate = -age');
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.age')).
+         toEqual(['35', '29', '21', '19', '10']);
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.name')).
+         toEqual(['Adam', 'Julie', 'Mike', 'Mary', 'John']);
+     });
+
+     it('should reorder the table when user selects different predicate', function() {
+       element('.doc-example a:contains("Name")').click();
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.name')).
+         toEqual(['Adam', 'John', 'Julie', 'Mary', 'Mike']);
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.age')).
+         toEqual(['35', '10', '29', '19', '21']);
+
+       element('.doc-example a:contains("Phone")+a:contains("^")').click();
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.phone')).
+         toEqual(['555-9876', '555-8765', '555-5678', '555-4321', '555-1212']);
+       expect(repeater('.doc-example table', 'friend in friends').column('friend.name')).
+         toEqual(['Mary', 'Julie', 'Adam', 'Mike', 'John']);
+     });
+   */
+  //TODO: WTH is descend param for and how/when it should be used, how is it affected by +/- in
+  //      predicate? the code below is impossible to read and specs are not very good.
   'orderBy':function(array, expression, descend) {
     expression = isArray(expression) ? expression: [expression];
     expression = map(expression, function($){
@@ -10227,7 +11222,47 @@ var angularArray = {
         return t1 < t2 ? -1 : 1;
       }
     }
+  },
 
+
+  /**
+   * @workInProgress
+   * @ngdoc function
+   * @name angular.Array.limitTo
+   * @function
+   *
+   * @description
+   * Creates a new array containing only the first, or last `limit` number of elements of the
+   * source `array`.
+   *
+   * Note: this function is used to augment the Array type in angular expressions. See
+   * {@link angular.Array} for more info.
+   *
+   * @param {Array} array Source array to be limited.
+   * @param {string|Number} limit The length of the returned array. If the number is positive, the
+   *     first `limit` items from the source array will be copied, if the number is negative, the
+   *     last `limit` items will be copied.
+   * @returns {Array} New array of length `limit`.
+   *
+   */
+  limitTo: function(array, limit) {
+    limit = parseInt(limit, 10);
+    var out = [],
+        i, n;
+
+    if (limit > 0) {
+      i = 0;
+      n = limit;
+    } else {
+      i = array.length + limit;
+      n = array.length;
+    }
+
+    for (; i<n; i++) {
+      out.push(array[i]);
+    }
+
+    return out;
   }
 };
 
@@ -12217,19 +13252,100 @@ angularServiceInject('$xhr.cache', function($xhr){
   return cache;
 }, ['$xhr.bulk']);
 
+
 /**
  * @workInProgress
  * @ngdoc service
  * @name angular.service.$resource
  * @requires $xhr
- * 
+ *
  * @description
  * Is a factory which creates a resource object which lets you interact with 
  * <a href="http://en.wikipedia.org/wiki/Representational_State_Transfer" target="_blank">RESTful</a>
  * server-side data sources.
  * Resource object has action methods which provide high-level behaviors without
- * the need to interact with the low level $xhr or XMLHttpRequest(). 
- * 
+ * the need to interact with the low level $xhr or XMLHttpRequest().
+ *
+ * <pre>
+     // Define CreditCard class
+     var CreditCard = $resource('/user/:userId/card/:cardId',
+      {userId:123, cardId:'@id'}, {
+       charge: {method:'POST', params:{charge:true}}
+      });
+
+     // We can retrieve a collection from the server
+     var cards = CreditCard.query();
+     // GET: /user/123/card
+     // server returns: [ {id:456, number:'1234', name:'Smith'} ];
+
+     var card = cards[0];
+     // each item is an instance of CreditCard
+     expect(card instanceof CreditCard).toEqual(true);
+     card.name = "J. Smith";
+     // non GET methods are mapped onto the instances
+     card.$save();
+     // POST: /user/123/card/456 {id:456, number:'1234', name:'J. Smith'}
+     // server returns: {id:456, number:'1234', name: 'J. Smith'};
+
+     // our custom method is mapped as well.
+     card.$charge({amount:9.99});
+     // POST: /user/123/card/456?amount=9.99&charge=true {id:456, number:'1234', name:'J. Smith'}
+     // server returns: {id:456, number:'1234', name: 'J. Smith'};
+
+     // we can create an instance as well
+     var newCard = new CreditCard({number:'0123'});
+     newCard.name = "Mike Smith";
+     newCard.$save();
+     // POST: /user/123/card {number:'0123', name:'Mike Smith'}
+     // server returns: {id:789, number:'01234', name: 'Mike Smith'};
+     expect(newCard.id).toEqual(789);
+ * </pre>
+ *
+ *
+ * @param {string} url A parameterized URL template with parameters prefixed by `:` as in
+ *     `/user/:username`.
+ * @param {Object=} paramDefaults Default values for `url` parameters. These can be overridden in
+ *     `actions` methods.
+ * @param {Object.<Object>=} actions Map of actions available for the resource.
+ *
+ *     Each resource comes preconfigured with `get`, `save`, `query`, `remove`, and `delete` to
+ *     mimic the RESTful philosophy.
+ *
+ *     To create your own actions, pass in a map keyed on action names (e.g. `'charge'`) with
+ *     elements consisting of these properties:
+ *
+ *     - `{string} method`:  Request method type. Valid methods are: `GET`, `POST`, `PUT`, `DELETE`,
+ *        and [`JSON`](http://en.wikipedia.org/wiki/JSON#JSONP) (also known as JSONP).
+ *     - `{Object=} params`: Set of pre-bound parameters for the action.
+ *     - `{boolean=} isArray`: If true then the returned object for this action is an array, see the
+ *       pre-binding section.
+ *     - `{boolean=} verifyCache`: If true then items returned from cache, are double checked by
+ *       running the query again and updating the resource asynchroniously.
+ *
+ *     Each service comes preconfigured with the following overridable actions:
+ *     <pre>
+ *       { 'get':    {method:'GET'},
+           'save':   {method:'POST'},
+           'query':  {method:'GET', isArray:true},
+           'remove': {method:'DELETE'},
+           'delete': {method:'DELETE'} };
+ *     </pre>
+ *
+ * @returns {Object} A resource "class" which has "static" method for each action in the definition.
+ *     Calling these methods invoke `$xhr` on the `url` template with the given `method` and
+ *     `params`. When the data is returned from the server then the object is an instance of the
+ *     resource type and all of the non-GET methods are available with `$` prefix. This allows you
+ *     to easily support CRUD operations (create, read, update, delete) on server-side data.
+
+       <pre>
+         var User = $resource('/user/:userId', {userId:'@id'});
+         var user = User.get({userId:123}, function(){
+           user.abc = true;
+           user.$save();
+         });
+       </pre>
+ *
+ *
  * @example
    <script>
      function BuzzController($resource) {
@@ -12259,7 +13375,7 @@ angularServiceInject('$xhr.cache', function($xhr){
        <h1 style="font-size: 15px;">
 	       <img src="{{item.actor.thumbnailUrl}}" style="max-height:30px;max-width:30px;"/>
 	       <a href="{{item.actor.profileUrl}}">{{item.actor.name}}</a>
-	       <a href="#" ng:click="expandReplies(item)" style="float: right;">Expand replies: {{item.links.replies[0].count}}</a>
+	       <a href ng:click="expandReplies(item)" style="float: right;">Expand replies: {{item.links.replies[0].count}}</a>
        </h1>
        {{item.object.content | html}}
        <div ng:repeat="reply in item.replies.data.items" style="margin-left: 20px;">
