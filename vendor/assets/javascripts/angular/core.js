@@ -133,7 +133,8 @@ var _undefined        = undefined,
     angularService    = extensionMap(angular, 'service'),
     angularCallbacks  = extensionMap(angular, 'callbacks'),
     nodeName,
-    rngScript         = /^(|.*\/)angular(-.*?)?(\.min)?.js(\?[^#]*)?(#(.*))?$/;
+    rngScript         = /^(|.*\/)angular(-.*?)?(\.min)?.js(\?[^#]*)?(#(.*))?$/,
+    DATE_ISOSTRING_LN = 24;
 
 /**
  * @workInProgress
@@ -1035,18 +1036,40 @@ function toJson(obj, pretty) {
  * Deserializes a string in the JSON format.
  *
  * @param {string} json JSON string to deserialize.
+ * @param {boolean} [useNative=false] Use native JSON parser if available
  * @returns {Object|Array|Date|string|number} Deserialized thingy.
  */
-function fromJson(json) {
+function fromJson(json, useNative) {
   if (!json) return json;
+
+  var obj, p, expression;
+
   try {
-    var p = parser(json, true);
-    var expression =  p.primary();
+    if (useNative && JSON && JSON.parse) {
+      obj = JSON.parse(json);
+      return transformDates(obj);
+    }
+
+    p = parser(json, true);
+    expression =  p.primary();
     p.assertAllConsumed();
     return expression();
+
   } catch (e) {
     error("fromJson error: ", json, e);
     throw e;
+  }
+
+  // TODO make foreach optionally recursive and remove this function
+  function transformDates(obj) {
+    if (isString(obj) && obj.length === DATE_ISOSTRING_LN) {
+      return angularString.toDate(obj);
+    } else if (isArray(obj) || isObject(obj)) {
+      foreach(obj, function(val, name) {
+        obj[name] = transformDates(val);
+      });
+    }
+    return obj;
   }
 }
 
@@ -2149,13 +2172,13 @@ function createInjector(providerScope, providers, cache) {
 var ESCAPE = {"n":"\n", "f":"\f", "r":"\r", "t":"\t", "v":"\v", "'":"'", '"':'"'};
 
 function lex(text, parseStringsForObjects){
-  var dateParseLength = parseStringsForObjects ? 24 : -1,
+  var dateParseLength = parseStringsForObjects ? DATE_ISOSTRING_LN : -1,
       tokens = [],
       token,
       index = 0,
       json = [],
       ch,
-      lastCh = ':';
+      lastCh = ':'; // can start regexp
 
   while (index < text.length) {
     ch = text.charAt(index);
@@ -2165,12 +2188,17 @@ function lex(text, parseStringsForObjects){
       readNumber();
     } else if (isIdent(ch)) {
       readIdent();
+      // identifiers can only be if the preceding char was a { or ,
       if (was('{,') && json[0]=='{' &&
          (token=tokens[tokens.length-1])) {
         token.json = token.text.indexOf('.') == -1;
       }
     } else if (is('(){}[].,;:')) {
-      tokens.push({index:index, text:ch, json:is('{}[]:,')});
+      tokens.push({
+        index:index, 
+        text:ch, 
+        json:(was(':[,') && is('{[')) || is('}]:,')
+      });
       if (is('{[')) json.unshift(ch);
       if (is('}]')) json.shift();
       index++;
@@ -2194,9 +2222,6 @@ function lex(text, parseStringsForObjects){
     lastCh = ch;
   }
   return tokens;
-  
-  
-  //////////////////////////////////////////////
 
   function is(chars) {
     return chars.indexOf(ch) != -1;
@@ -2221,6 +2246,10 @@ function lex(text, parseStringsForObjects){
            'A' <= ch && ch <= 'Z' ||
            '_' == ch || ch == '$';
   }
+  function isExpOperator(ch) {
+    return ch == '-' || ch == '+' || isNumber(ch);
+  }
+
   function throwError(error, start, end) {
     end = end || index;
     throw Error("Lexer Error: " + error + " at column" +
@@ -2229,61 +2258,103 @@ function lex(text, parseStringsForObjects){
             " " + end) + 
         " in expression [" + text + "].");
   }
-  
-  function consume(regexp, processToken, errorMsg) {
-    var match = text.substr(index).match(regexp);
-    var token = {index: index};
-    var start = index;
-    if (!match) throwError(errorMsg);
-    index += match[0].length;
-    processToken(token, token.text = match[0], start);
-    tokens.push(token);
-  }
 
   function readNumber() {
-    consume(/^(\d+)?(\.\d+)?([eE][+-]?\d+)?/, function(token, number){
-      token.text = number = 1 * number;
-      token.json = true;
-      token.fn = valueFn(number);
-    }, "Not a valid number");
-  }
-  
-  function readIdent() {
-    consume(/^[\w_\$][\w_\$\d]*(\.[\w_\$][\w_\$\d]*)*/, function(token, ident){
-      fn = OPERATORS[ident];
-      if (!fn) {
-        fn = getterFn(ident);
-        fn.isAssignable = ident;
+    var number = "";
+    var start = index;
+    while (index < text.length) {
+      var ch = lowercase(text.charAt(index));
+      if (ch == '.' || isNumber(ch)) {
+        number += ch;
+      } else {
+        var peekCh = peek();
+        if (ch == 'e' && isExpOperator(peekCh)) {
+          number += ch;
+        } else if (isExpOperator(ch) &&
+            peekCh && isNumber(peekCh) &&
+            number.charAt(number.length - 1) == 'e') {
+          number += ch;
+        } else if (isExpOperator(ch) &&
+            (!peekCh || !isNumber(peekCh)) &&
+            number.charAt(number.length - 1) == 'e') {
+          throwError('Invalid exponent');
+        } else {
+          break;
+        }
       }
-      token.fn = OPERATORS[ident]||extend(getterFn(ident), {
+      index++;
+    }
+    number = 1 * number;
+    tokens.push({index:start, text:number, json:true,
+      fn:function(){return number;}});
+  }
+  function readIdent() {
+    var ident = "";
+    var start = index;
+    var fn;
+    while (index < text.length) {
+      var ch = text.charAt(index);
+      if (ch == '.' || isIdent(ch) || isNumber(ch)) {
+        ident += ch;
+      } else {
+        break;
+      }
+      index++;
+    }
+    fn = OPERATORS[ident];
+    tokens.push({
+      index:start, 
+      text:ident, 
+      json: fn,
+      fn:fn||extend(getterFn(ident), {
         assign:function(self, value){
           return setter(self, ident, value);
         }
-      });
-      token.json = OPERATORS[ident];
+      })
     });
   }
   
   function readString(quote) {
-    consume(/^(('(\\'|[^'])*')|("(\\"|[^"])*"))/, function(token, rawString, start){
-      var hasError;
-      var string = token.string = rawString.substr(1, rawString.length - 2).
-        replace(/(\\u(.?.?.?.?))|(\\(.))/g, 
-          function(match, wholeUnicode, unicode, wholeEscape, escape){
-            if (unicode && !unicode.match(/[\da-fA-F]{4}/))
-              hasError = hasError || bind(null, throwError, "Invalid unicode escape [\\u" + unicode + "]", start);
-            return unicode ? 
-                String.fromCharCode(parseInt(unicode, 16)) : 
-                ESCAPE[escape] || escape;
-          });
-      (hasError||noop)();
-      token.json = true;
-      token.fn = function(){
-        return (string.length == dateParseLength) ?
-            angular['String']['toDate'](string) : 
-            string;
-      };
-    }, "Unterminated string");
+    var start = index;
+    index++;
+    var string = "";
+    var rawString = quote;
+    var escape = false;
+    while (index < text.length) {
+      var ch = text.charAt(index);
+      rawString += ch;
+      if (escape) {
+        if (ch == 'u') {
+          var hex = text.substring(index + 1, index + 5);
+          if (!hex.match(/[\da-f]{4}/i))
+            throwError( "Invalid unicode escape [\\u" + hex + "]");
+          index += 4;
+          string += String.fromCharCode(parseInt(hex, 16));
+        } else {
+          var rep = ESCAPE[ch];
+          if (rep) {
+            string += rep;
+          } else {
+            string += ch;
+          }
+        }
+        escape = false;
+      } else if (ch == '\\') {
+        escape = true;
+      } else if (ch == quote) {
+        index++;
+        tokens.push({index:start, text:rawString, string:string, json:true,
+          fn:function(){
+            return (string.length == dateParseLength) ?
+              angular['String']['toDate'](string) : string;
+          }});
+        return;
+      } else {
+        string += ch;
+      }
+      index++;
+    }
+    throwError("Unterminated quote", start);
   }
 }
 
@@ -6238,7 +6309,7 @@ angularServiceInject('$xhr', function($browser, $error, $log){
     $browser.xhr(method, url, post, function(code, response){
       try {
         if (isString(response) && /^\s*[\[\{]/.exec(response) && /[\}\]]\s*$/.exec(response)) {
-          response = fromJson(response);
+          response = fromJson(response, true);
         }
         if (code == 200) {
           callback(code, response);
@@ -7770,17 +7841,18 @@ angularAttrMarkup('{{}}', function(value, name, element){
 
 function modelAccessor(scope, element) {
   var expr = element.attr('name');
-  if (!expr) throw "Required field 'name' not found.";
-  return {
-    get: function() {
-      return scope.$eval(expr);
-    },
-    set: function(value) {
-      if (value !== _undefined) {
-        return scope.$tryEval(expr + '=' + toJson(value), element);
+  if (expr) {
+    return {
+      get: function() {
+        return scope.$eval(expr);
+      },
+      set: function(value) {
+        if (value !== _undefined) {
+          return scope.$tryEval(expr + '=' + toJson(value), element);
+        }
       }
-    }
-  };
+    };
+  }
 }
 
 function modelFormattedAccessor(scope, element) {
@@ -7788,14 +7860,16 @@ function modelFormattedAccessor(scope, element) {
       formatterName = element.attr('ng:format') || NOOP,
       formatter = angularFormatter(formatterName);
   if (!formatter) throw "Formatter named '" + formatterName + "' not found.";
-  return {
-    get: function() {
-      return formatter.format(accessor.get());
-    },
-    set: function(value) {
-      return accessor.set(formatter.parse(value));
-    }
-  };
+  if (accessor) {
+    return {
+      get: function() {
+        return formatter.format(accessor.get());
+      },
+      set: function(value) {
+        return accessor.set(formatter.parse(value));
+      }
+    };
+  }
 }
 
 function compileValidator(expr) {
@@ -8009,7 +8083,7 @@ function optionsAccessor(scope, element) {
 
 function noopAccessor() { return { get: noop, set: noop }; }
 
-var textWidget = inputWidget('keyup change', modelAccessor, valueAccessor, initWidgetValue()),
+var textWidget = inputWidget('keyup change', modelAccessor, valueAccessor, initWidgetValue(), true),
     buttonWidget = inputWidget('click', noopAccessor, noopAccessor, noop),
     INPUT_TYPE = {
       'text':            textWidget,
@@ -8087,29 +8161,34 @@ function radioInit(model, view, element) {
      expect(binding('checkboxCount')).toBe('1');
    });
  */
-function inputWidget(events, modelAccessor, viewAccessor, initFn) {
+function inputWidget(events, modelAccessor, viewAccessor, initFn, dirtyChecking) {
   return function(element) {
     var scope = this,
         model = modelAccessor(scope, element),
         view = viewAccessor(scope, element),
         action = element.attr('ng:change') || '',
         lastValue;
-    initFn.call(scope, model, view, element);
-    this.$eval(element.attr('ng:init')||'');
-    // Don't register a handler if we are a button (noopAccessor) and there is no action
-    if (action || modelAccessor !== noopAccessor) {
-      element.bind(events, function (){
-        model.set(view.get());
-        lastValue = model.get();
-        scope.$tryEval(action, element);
-        scope.$root.$eval();
+    if (model) {
+      initFn.call(scope, model, view, element);
+      this.$eval(element.attr('ng:init')||'');
+      // Don't register a handler if we are a button (noopAccessor) and there is no action
+      if (action || modelAccessor !== noopAccessor) {
+        element.bind(events, function (){
+          var value = view.get();
+          if (!dirtyChecking || value != lastValue) {
+            model.set(value);
+            lastValue = model.get();
+            scope.$tryEval(action, element);
+            scope.$root.$eval();
+          }
+        });
+      }
+      scope.$watch(model.get, function(value){
+        if (lastValue !== value) {
+          view.set(lastValue = value);
+        }
       });
     }
-    scope.$watch(model.get, function(value){
-      if (lastValue !== value) {
-        view.set(lastValue = value);
-      }
-    });
   };
 }
 
