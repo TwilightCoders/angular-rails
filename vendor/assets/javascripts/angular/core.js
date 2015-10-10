@@ -723,7 +723,7 @@ function concat(array1, array2, index) {
  *
  * @param {Object} self Context in which `fn` should be evaluated in.
  * @param {function()} fn Function to be bound.
- * @param {(...*)=} args Optional arguments to be prebound to the `fn` function call.
+ * @param {...*} args Optional arguments to be prebound to the `fn` function call.
  * @returns {function()} Function that wraps the `fn` with all the specified bindings.
  */
 function bind(self, fn) {
@@ -1497,7 +1497,7 @@ function getterFn(path){
     code += 'if(!s) return s;\n' +
             'l=s;\n' +
             's=s' + key + ';\n' +
-            'if(typeof s=="function") s = function(){ return l'+key+'.apply(l, arguments); };\n';
+            'if(typeof s=="function" && !(s instanceof RegExp)) s = function(){ return l'+key+'.apply(l, arguments); };\n';
     if (key.charAt(1) == '$') {
       // special code for super-imposed functions
       var name = key.substr(2);
@@ -2132,7 +2132,7 @@ function createInjector(providerScope, providers, cache) {
     '/':function(self, a,b){return a/b;},
     '%':function(self, a,b){return a%b;},
     '^':function(self, a,b){return a^b;},
-    '=':function(self, a,b){return setter(self, a, b);},
+    '=':noop,
     '==':function(self, a,b){return a==b;},
     '!=':function(self, a,b){return a!=b;},
     '<':function(self, a,b){return a<b;},
@@ -2155,7 +2155,7 @@ function lex(text, parseStringsForObjects){
       index = 0,
       json = [],
       ch,
-      lastCh = ':'; // can start regexp
+      lastCh = ':';
 
   while (index < text.length) {
     ch = text.charAt(index);
@@ -2163,8 +2163,6 @@ function lex(text, parseStringsForObjects){
       readString(ch);
     } else if (isNumber(ch) || is('.') && isNumber(peek())) {
       readNumber();
-    } else if ( was('({[:,;') && is('/') ) {
-      readRegexp();
     } else if (isIdent(ch)) {
       readIdent();
       if (was('{,') && json[0]=='{' &&
@@ -2196,6 +2194,9 @@ function lex(text, parseStringsForObjects){
     lastCh = ch;
   }
   return tokens;
+  
+  
+  //////////////////////////////////////////////
 
   function is(chars) {
     return chars.indexOf(ch) != -1;
@@ -2220,10 +2221,6 @@ function lex(text, parseStringsForObjects){
            'A' <= ch && ch <= 'Z' ||
            '_' == ch || ch == '$';
   }
-  function isExpOperator(ch) {
-    return ch == '-' || ch == '+' || isNumber(ch);
-  }
-
   function throwError(error, start, end) {
     end = end || index;
     throw Error("Lexer Error: " + error + " at column" +
@@ -2232,128 +2229,61 @@ function lex(text, parseStringsForObjects){
             " " + end) + 
         " in expression [" + text + "].");
   }
+  
+  function consume(regexp, processToken, errorMsg) {
+    var match = text.substr(index).match(regexp);
+    var token = {index: index};
+    var start = index;
+    if (!match) throwError(errorMsg);
+    index += match[0].length;
+    processToken(token, token.text = match[0], start);
+    tokens.push(token);
+  }
 
   function readNumber() {
-    var number = "";
-    var start = index;
-    while (index < text.length) {
-      var ch = lowercase(text.charAt(index));
-      if (ch == '.' || isNumber(ch)) {
-        number += ch;
-      } else {
-        var peekCh = peek();
-        if (ch == 'e' && isExpOperator(peekCh)) {
-          number += ch;
-        } else if (isExpOperator(ch) &&
-            peekCh && isNumber(peekCh) &&
-            number.charAt(number.length - 1) == 'e') {
-          number += ch;
-        } else if (isExpOperator(ch) &&
-            (!peekCh || !isNumber(peekCh)) &&
-            number.charAt(number.length - 1) == 'e') {
-          throwError('Invalid exponent');
-        } else {
-          break;
-        }
-      }
-      index++;
-    }
-    number = 1 * number;
-    tokens.push({index:start, text:number, json:true,
-      fn:function(){return number;}});
+    consume(/^(\d+)?(\.\d+)?([eE][+-]?\d+)?/, function(token, number){
+      token.text = number = 1 * number;
+      token.json = true;
+      token.fn = valueFn(number);
+    }, "Not a valid number");
   }
+  
   function readIdent() {
-    var ident = "";
-    var start = index;
-    while (index < text.length) {
-      var ch = text.charAt(index);
-      if (ch == '.' || isIdent(ch) || isNumber(ch)) {
-        ident += ch;
-      } else {
-        break;
+    consume(/^[\w_\$][\w_\$\d]*(\.[\w_\$][\w_\$\d]*)*/, function(token, ident){
+      fn = OPERATORS[ident];
+      if (!fn) {
+        fn = getterFn(ident);
+        fn.isAssignable = ident;
       }
-      index++;
-    }
-    var fn = OPERATORS[ident];
-    if (!fn) {
-      fn = getterFn(ident);
-      fn.isAssignable = ident;
-    }
-    tokens.push({index:start, text:ident, fn:fn, json: OPERATORS[ident]});
+      token.fn = OPERATORS[ident]||extend(getterFn(ident), {
+        assign:function(self, value){
+          return setter(self, ident, value);
+        }
+      });
+      token.json = OPERATORS[ident];
+    });
   }
   
   function readString(quote) {
-    var start = index;
-    index++;
-    var string = "";
-    var rawString = quote;
-    var escape = false;
-    while (index < text.length) {
-      var ch = text.charAt(index);
-      rawString += ch;
-      if (escape) {
-        if (ch == 'u') {
-          var hex = text.substring(index + 1, index + 5);
-          if (!hex.match(/[\da-f]{4}/i))
-            throwError( "Invalid unicode escape [\\u" + hex + "]");
-          index += 4;
-          string += String.fromCharCode(parseInt(hex, 16));
-        } else {
-          var rep = ESCAPE[ch];
-          if (rep) {
-            string += rep;
-          } else {
-            string += ch;
-          }
-        }
-        escape = false;
-      } else if (ch == '\\') {
-        escape = true;
-      } else if (ch == quote) {
-        index++;
-        tokens.push({index:start, text:rawString, string:string, json:true,
-          fn:function(){
-            return (string.length == dateParseLength) ?
-              angular['String']['toDate'](string) : string;
-          }});
-        return;
-      } else {
-        string += ch;
-      }
-      index++;
-    }
-    throwError("Unterminated quote", start);
-  }
-  function readRegexp(quote) {
-    var start = index;
-    index++;
-    var regexp = "";
-    var escape = false;
-    while (index < text.length) {
-      var ch = text.charAt(index);
-      if (escape) {
-        regexp += ch;
-        escape = false;
-      } else if (ch === '\\') {
-        regexp += ch;
-        escape = true;
-      } else if (ch === '/') {
-        index++;
-        var flags = "";
-        if (isIdent(text.charAt(index))) {
-          readIdent();
-          flags = tokens.pop().text;
-        }
-        var compiledRegexp = new RegExp(regexp, flags);
-        tokens.push({index:start, text:regexp, flags:flags,
-          fn:function(){return compiledRegexp;}});
-        return;
-      } else {
-        regexp += ch;
-      }
-      index++;
-    }
-    throwError("Unterminated RegExp", start);
+    consume(/^(('(\\'|[^'])*')|("(\\"|[^"])*"))/, function(token, rawString, start){
+      var hasError;
+      var string = token.string = rawString.substr(1, rawString.length - 2).
+        replace(/(\\u(.?.?.?.?))|(\\(.))/g, 
+          function(match, wholeUnicode, unicode, wholeEscape, escape){
+            if (unicode && !unicode.match(/[\da-fA-F]{4}/))
+              hasError = hasError || bind(null, throwError, "Invalid unicode escape [\\u" + unicode + "]", start);
+            return unicode ? 
+                String.fromCharCode(parseInt(unicode, 16)) : 
+                ESCAPE[escape] || escape;
+          });
+      (hasError||noop)();
+      token.json = true;
+      token.fn = function(){
+        return (string.length == dateParseLength) ?
+            angular['String']['toDate'](string) : 
+            string;
+      };
+    }, "Unterminated string");
   }
 }
 
@@ -2507,14 +2437,17 @@ function parser(text, json){
 
   function assignment(){
     var left = logicalOR();
+    var right;
     var token;
     if (token = expect('=')) {
-      if (!left.isAssignable) {
+      if (!left.assign) {
         throwError("implies assignment but [" +
           text.substring(0, token.index) + "] can not be assigned to", token);
       }
-      var ident = function(){return left.isAssignable;};
-      return binaryFn(ident, token.fn, logicalOR());
+      right = logicalOR();
+      return function(self){
+        return left.assign(self, right(self));
+      };
     } else {
       return left;
     }
@@ -2641,28 +2574,28 @@ function parser(text, json){
   function fieldAccess(object) {
     var field = expect().text;
     var getter = getterFn(field);
-    var fn = function (self){
+    return extend(function (self){
       return getter(object(self));
-    };
-    fn.isAssignable = field;
-    return fn;
+    }, {
+      assign:function(self, value){
+        return setter(object(self), field, value);
+      }
+    });
   }
 
   function objectIndex(obj) {
     var indexFn = expression();
     consume(']');
-    if (expect('=')) {
-      var rhs = expression();
-      return function (self){
-        return obj(self)[indexFn(self)] = rhs(self);
-      };
-    } else {
-      return function (self){
+    return extend(
+      function (self){
         var o = obj(self);
         var i = indexFn(self);
         return (o) ? o[i] : _undefined;
-      };
-    }
+      }, {
+        assign:function(self, value){
+          return obj(self)[indexFn(self)] = value;
+        }
+      });
   }
 
   function functionCall(fn) {
@@ -5203,8 +5136,9 @@ extend(angularValidator, {
    * @css ng-validation-error
    * 
    * @example
+   * <script> var ssn = /^\d\d\d-\d\d-\d\d\d\d$/; </script>
    * Enter valid SSN:
-   * <input name="ssn" value="123-45-6789" ng:validate="regexp:/^\d\d\d-\d\d-\d\d\d\d$/" >
+   * <input name="ssn" value="123-45-6789" ng:validate="regexp:$window.ssn" >
    * 
    * @scenario
    * it('should invalidate non ssn', function(){
@@ -6418,12 +6352,16 @@ angularServiceInject('$xhr.bulk', function($xhr, $error, $log){
  * @param {function()} fn A function, who's execution should be deferred.
  */
 angularServiceInject('$defer', function($browser, $exceptionHandler) {
+  var scope = this;
+
   return function(fn) {
     $browser.defer(function() {
       try {
         fn();
       } catch(e) {
         $exceptionHandler(e);
+      } finally {
+        scope.$eval();
       }
     });
   };
@@ -6487,7 +6425,7 @@ angularServiceInject('$xhr.cache', function($xhr, $defer){
 
 /**
  * @workInProgress
- * @ngdoc service
+ * @ngdoc function
  * @name angular.service.$resource
  * @requires $xhr
  *
@@ -6533,6 +6471,33 @@ angularServiceInject('$xhr.cache', function($xhr, $defer){
      expect(newCard.id).toEqual(789);
  * </pre>
  *
+ * The object returned from this function execution is a resource "class" which has "static" method
+ * for each action in the definition.
+ *
+ * Calling these methods invoke `$xhr` on the `url` template with the given `method` and `params`.
+ * When the data is returned from the server then the object is an instance of the resource type and
+ * all of the non-GET methods are available with `$` prefix. This allows you to easily support CRUD
+ * operations (create, read, update, delete) on server-side data.
+
+   <pre>
+     var User = $resource('/user/:userId', {userId:'@id'});
+     var user = User.get({userId:123}, function(){
+       user.abc = true;
+       user.$save();
+     });
+   </pre>
+ *
+ *     It's worth noting that the callback for `get`, `query` and other method gets passed in the
+ *     response that came from the server, so one could rewrite the above example as:
+ *
+   <pre>
+     var User = $resource('/user/:userId', {userId:'@id'});
+     User.get({userId:123}, function(u){
+       u.abc = true;
+       u.$save();
+     });
+   </pre>
+ *
  *
  * @param {string} url A parameterized URL template with parameters prefixed by `:` as in
  *     `/user/:username`.
@@ -6563,20 +6528,7 @@ angularServiceInject('$xhr.cache', function($xhr, $defer){
            'delete': {method:'DELETE'} };
  *     </pre>
  *
- * @returns {Object} A resource "class" which has "static" method for each action in the definition.
- *     Calling these methods invoke `$xhr` on the `url` template with the given `method` and
- *     `params`. When the data is returned from the server then the object is an instance of the
- *     resource type and all of the non-GET methods are available with `$` prefix. This allows you
- *     to easily support CRUD operations (create, read, update, delete) on server-side data.
-
-       <pre>
-         var User = $resource('/user/:userId', {userId:'@id'});
-         var user = User.get({userId:123}, function(){
-           user.abc = true;
-           user.$save();
-         });
-       </pre>
- *
+ * @returns {Object} A resource "class".
  *
  * @example
    <script>
