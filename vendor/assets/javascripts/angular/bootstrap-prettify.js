@@ -1,5 +1,5 @@
 /**
- * @license AngularJS v1.0.0rc11
+ * @license AngularJS v1.0.0rc12
  * (c) 2010-2012 Google, Inc. http://angularjs.org
  * License: MIT
  */
@@ -204,7 +204,7 @@ directive.ngEmbedApp = ['$templateCache', '$browser', '$rootScope', '$location',
           }];
           this.html5Mode = angular.noop;
         });
-        $provide.decorator('$defer', ['$rootScope', '$delegate', function($rootScope, $delegate) {
+        $provide.decorator('$timeout', ['$rootScope', '$delegate', function($rootScope, $delegate) {
           return angular.extend(function(fn, delay) {
             if (delay && delay > 50) {
               return setTimeout(function() {
