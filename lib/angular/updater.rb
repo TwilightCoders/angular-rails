@@ -11,6 +11,9 @@ module Angular
   BASE_URL = 'https://code.angularjs.org'
 
   class Updater
+
+    attr_reader :version
+
     ROOT_PATH = Pathname.new('vendor/assets/javascripts/angular')
     I18N_PATH = Pathname.new('vendor/assets/javascripts/angular/i18n')
 
@@ -25,9 +28,11 @@ module Angular
       end
 
       index = list.find_index(version)
-      bump = list.at(index + 1)
-
-      self.new(version: bump.to_s, beta: beta)
+      if bump = list.at(index + 1)
+        self.new(version: bump.to_s, beta: beta)
+      else
+        nil
+      end
     end
 
     def initialize(version: nil, beta: nil)

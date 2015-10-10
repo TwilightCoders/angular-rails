@@ -24,6 +24,17 @@ task :bump, [:beta] do |_t, args|
   updater.build
 end
 
+task :bulk do
+  while updater = Angular::Updater.bump do
+    version = updater.version
+    `git checkout -B #{version.major}.#{version.minor}.x`
+    updater.build
+    `git add vendor/`
+    `git add lib/angular/rails/version.rb`
+    `git commit -m "Version #{version}"`
+  end
+end
+
 desc 'Clean Angular JS assets'
 task :clean do
   Angular::Updater.clean
