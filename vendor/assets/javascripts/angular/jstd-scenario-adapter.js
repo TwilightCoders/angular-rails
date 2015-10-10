@@ -1,10 +1,9 @@
 /**
- * @license AngularJS v1.0.0rc2
+ * @license AngularJS v1.0.0rc3
  * (c) 2010-2011 AngularJS http://angularjs.org
  * License: MIT
  */
 (function(window) {
-'use strict';
 
 /**
  * JSTestDriver adapter for angular scenario tests
